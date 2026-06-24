@@ -1,0 +1,27 @@
+[project]
+name = "tinyinsta-libs"
+version = "0.1.0"
+description = "Shared code across TinyInsta microservices: event contract, bus client, JWT auth, Django base settings."
+requires-python = ">=3.12"
+dependencies = [
+    # Bus (Redpanda / Kafka API)
+    "confluent-kafka>=2.5",
+    # Auth — JWT validation against the Keycloak JWKS
+    "PyJWT[crypto]>=2.9",
+    "cryptography>=43.0",
+    "requests>=2.32",
+]
+
+[project.optional-dependencies]
+# Everything Django/DRF — HTTP services depend on it, the media-worker does not.
+django = [
+    "Django>=5.1,<6.0",
+    "djangorestframework>=3.15",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["tinyinsta*"]
