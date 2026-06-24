@@ -28,6 +28,17 @@ yarn-error.log*
 .env*.local
 .env
 
+# python / django (services)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.sqlite3
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 # vercel
 .vercel
 
