@@ -1,0 +1,4 @@
+# tinyinsta-libs[django] is installed separately (see Dockerfile).
+gunicorn>=23.0
+psycopg[binary]>=3.2      # Postgres (profiles)
+neo4j>=5.24               # social graph

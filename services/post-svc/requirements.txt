@@ -1,0 +1,3 @@
+# tinyinsta-libs[django] is installed separately (see Dockerfile).
+gunicorn>=23.0
+pymongo>=4.9              # posts & comments

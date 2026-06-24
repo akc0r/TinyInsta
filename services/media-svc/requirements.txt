@@ -1,0 +1,4 @@
+# tinyinsta-libs[django] is installed separately (see Dockerfile).
+gunicorn>=23.0
+pymongo>=4.9             # media metadata
+boto3>=1.35              # S3/MinIO client (presigned URLs)

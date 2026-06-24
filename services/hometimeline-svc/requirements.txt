@@ -1,0 +1,4 @@
+# tinyinsta-libs[django] is installed separately (see Dockerfile).
+gunicorn>=23.0
+redis>=5.1
+requests>=2.32           # sync call to usertimeline-svc (hybrid fan-out)
