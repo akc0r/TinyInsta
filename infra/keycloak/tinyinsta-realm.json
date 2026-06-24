@@ -1,0 +1,22 @@
+{
+  "realm": "tinyinsta",
+  "enabled": true,
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "sslRequired": "none",
+  "clients": [
+    {
+      "clientId": "tinyinsta-frontend",
+      "name": "TinyInsta Frontend",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["+"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      }
+    }
+  ]
+}

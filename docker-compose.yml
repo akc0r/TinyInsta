@@ -1,0 +1,360 @@
+# TinyInsta — local orchestration.
+# Profiles: infra | mongo | minio | neo4j | search | tools | apps (+ one per service)
+#
+#   docker compose --profile infra up -d
+#   docker compose --profile infra --profile apps up -d
+#
+# Application images build with context = repo root (to bundle libs/).
+
+# ---- Reusable YAML anchors -----------------------------------------------------
+x-svc-env: &svc-env
+  DJANGO_DEBUG: "${DJANGO_DEBUG:-true}"
+  DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:-dev-insecure-change-me}"
+  POSTGRES_USER: "${POSTGRES_USER:-tinyinsta}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tinyinsta}"
+  POSTGRES_HOST: postgres
+  BUS_BOOTSTRAP_SERVERS: redpanda:9092
+  OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
+  OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8080/realms/tinyinsta}"
+  OIDC_AUDIENCE: "${OIDC_AUDIENCE:-account}"
+
+x-svc-build: &svc-build
+  context: .
+  # `dockerfile` is set per service below.
+
+services:
+  # ===========================================================================
+  # INFRA (profile: infra)
+  # ===========================================================================
+  traefik:
+    image: traefik:v3.1
+    profiles: ["infra"]
+    command: --configFile=/etc/traefik/traefik.yml
+    ports:
+      - "80:80"       # API Gateway (frontend → /api/... and /ws)
+      - "8090:8090"   # Traefik dashboard
+    volumes:
+      - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      # Shared middleware: strips the /api prefix before routing to services.
+      - "traefik.http.middlewares.apistrip.stripprefix.prefixes=/api"
+
+  postgres:
+    image: postgres:16
+    profiles: ["infra"]
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-tinyinsta}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tinyinsta}"
+      POSTGRES_DB: "${POSTGRES_USER:-tinyinsta}"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tinyinsta}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7
+    profiles: ["infra"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    profiles: ["infra"]
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --overprovisioned
+      - --kafka-addr=PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr=PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: ["infra"]
+    command: start-dev --import-realm
+    environment:
+      KEYCLOAK_ADMIN: "${KEYCLOAK_ADMIN:-admin}"
+      KEYCLOAK_ADMIN_PASSWORD: "${KEYCLOAK_ADMIN_PASSWORD:-admin}"
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: "${POSTGRES_USER:-tinyinsta}"
+      KC_DB_PASSWORD: "${POSTGRES_PASSWORD:-tinyinsta}"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infra/keycloak:/opt/keycloak/data/import:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ===========================================================================
+  # DATASTORES (introduced incrementally via profiles)
+  # ===========================================================================
+  mongo:
+    image: mongo:7
+    profiles: ["mongo"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["minio"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: "${S3_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${S3_SECRET_KEY:-minioadmin}"
+    ports:
+      - "9000:9000"   # API S3
+      - "9001:9001"   # console
+    volumes:
+      - minio-data:/data
+
+  neo4j:
+    image: neo4j:5
+    profiles: ["neo4j"]
+    environment:
+      NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-tinyinsta}"
+    ports:
+      - "7474:7474"   # console
+      - "7687:7687"   # bolt
+    volumes:
+      - neo4j-data:/data
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    profiles: ["search"]
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+  redpanda-console:            # tools profile (optional)
+    image: redpandadata/console:v2.7.2
+    profiles: ["tools"]
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8085:8080"
+    depends_on:
+      - redpanda
+
+  # ===========================================================================
+  # APPLICATION SERVICES (profile: apps, + one profile per service)
+  # ===========================================================================
+  user-svc:
+    build: { <<: *svc-build, dockerfile: services/user-svc/Dockerfile }
+    image: tinyinsta/user-svc
+    profiles: ["apps", "user-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: user-svc
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "${NEO4J_USER:-neo4j}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:-tinyinsta}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users.rule=PathPrefix(`/api/users`)"
+      - "traefik.http.routers.users.middlewares=apistrip@docker"
+
+  post-svc:
+    build: { <<: *svc-build, dockerfile: services/post-svc/Dockerfile }
+    image: tinyinsta/post-svc
+    profiles: ["apps", "post-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: post-svc
+      MONGO_URI: "mongodb://mongo:27017"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.posts.rule=PathPrefix(`/api/posts`)"
+      - "traefik.http.routers.posts.middlewares=apistrip@docker"
+  post-worker:
+    image: tinyinsta/post-svc
+    profiles: ["apps", "post-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: post-svc
+      MONGO_URI: "mongodb://mongo:27017"
+    depends_on: [post-svc]
+
+  usertimeline-svc:
+    build: { <<: *svc-build, dockerfile: services/usertimeline-svc/Dockerfile }
+    image: tinyinsta/usertimeline-svc
+    profiles: ["apps", "usertimeline-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: usertimeline-svc
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.usertimeline.rule=PathPrefix(`/api/usertimeline`)"
+      - "traefik.http.routers.usertimeline.middlewares=apistrip@docker"
+  usertimeline-worker:
+    image: tinyinsta/usertimeline-svc
+    profiles: ["apps", "usertimeline-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: usertimeline-svc
+    depends_on: [usertimeline-svc]
+
+  hometimeline-svc:
+    build: { <<: *svc-build, dockerfile: services/hometimeline-svc/Dockerfile }
+    image: tinyinsta/hometimeline-svc
+    profiles: ["apps", "hometimeline-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: hometimeline-svc
+      USERTIMELINE_URL: "http://usertimeline-svc:8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.home.rule=PathPrefix(`/api/home`)"
+      - "traefik.http.routers.home.middlewares=apistrip@docker"
+  hometimeline-worker:
+    image: tinyinsta/hometimeline-svc
+    profiles: ["apps", "hometimeline-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: hometimeline-svc
+      USERTIMELINE_URL: "http://usertimeline-svc:8000"
+    depends_on: [hometimeline-svc]
+
+  interaction-svc:
+    build: { <<: *svc-build, dockerfile: services/interaction-svc/Dockerfile }
+    image: tinyinsta/interaction-svc
+    profiles: ["apps", "interaction-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: interaction-svc
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.interactions.rule=PathPrefix(`/api/interactions`)"
+      - "traefik.http.routers.interactions.middlewares=apistrip@docker"
+
+  stories-svc:
+    build: { <<: *svc-build, dockerfile: services/stories-svc/Dockerfile }
+    image: tinyinsta/stories-svc
+    profiles: ["apps", "stories-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: stories-svc
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stories.rule=PathPrefix(`/api/stories`)"
+      - "traefik.http.routers.stories.middlewares=apistrip@docker"
+  stories-worker:
+    image: tinyinsta/stories-svc
+    profiles: ["apps", "stories-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: stories-svc
+    depends_on: [stories-svc]
+
+  media-svc:
+    build: { <<: *svc-build, dockerfile: services/media-svc/Dockerfile }
+    image: tinyinsta/media-svc
+    profiles: ["apps", "media-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: media-svc
+      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_DB: media_svc
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+      S3_BUCKET: "${S3_BUCKET:-media}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.media.rule=PathPrefix(`/api/media`)"
+      - "traefik.http.routers.media.middlewares=apistrip@docker"
+
+  media-worker:
+    build: { <<: *svc-build, dockerfile: services/media-worker/Dockerfile }
+    image: tinyinsta/media-worker
+    profiles: ["apps", "media-worker"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: media-worker
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+      S3_BUCKET: "${S3_BUCKET:-media}"
+
+  search-svc:
+    build: { <<: *svc-build, dockerfile: services/search-svc/Dockerfile }
+    image: tinyinsta/search-svc
+    profiles: ["apps", "search-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: search-svc
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.search.rule=PathPrefix(`/api/search`) || PathPrefix(`/api/explore`) || PathPrefix(`/api/hashtags`)"
+      - "traefik.http.routers.search.middlewares=apistrip@docker"
+  search-worker:
+    image: tinyinsta/search-svc
+    profiles: ["apps", "search-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: search-svc
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+    depends_on: [search-svc]
+
+  realtime-svc:
+    build: { <<: *svc-build, dockerfile: services/realtime-svc/Dockerfile }
+    image: tinyinsta/realtime-svc
+    profiles: ["apps", "realtime-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: realtime-svc
+    labels:
+      - "traefik.enable=true"
+      # Notifications REST (/api prefix stripped)
+      - "traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`)"
+      - "traefik.http.routers.notifications.middlewares=apistrip@docker"
+      - "traefik.http.routers.notifications.service=realtime-svc"
+      # WebSocket (no strip)
+      - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.service=realtime-svc"
+      - "traefik.http.services.realtime-svc.loadbalancer.server.port=8000"
+  realtime-worker:
+    image: tinyinsta/realtime-svc
+    profiles: ["apps", "realtime-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: realtime-svc
+    depends_on: [realtime-svc]
+
+volumes:
+  postgres-data:
+  redis-data:
+  redpanda-data:
+  mongo-data:
+  minio-data:
+  neo4j-data:
+  es-data:

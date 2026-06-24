@@ -1,0 +1,21 @@
+# Traefik static configuration.
+# Per-service routing is declared via Docker labels in docker-compose.yml.
+
+entryPoints:
+  web:
+    address: ":80"
+  traefik:
+    address: ":8090"   # dashboard (http://localhost:8090)
+
+api:
+  dashboard: true
+  insecure: true       # dev only
+
+providers:
+  docker:
+    exposedByDefault: false   # a service is routed only if it sets `traefik.enable=true`
+
+log:
+  level: INFO
+
+accessLog: {}
