@@ -93,5 +93,8 @@ class Command(BaseCommand):
         )
 
     def _on_story(self, data: dict) -> None:
-        # Stories arrive in Phase 6; subscribed here so the topic exists, no-op.
+        # Live push of a new story into connected followers' bars needs the
+        # author's follower set, which realtime-svc doesn't project (stories-svc
+        # owns the story graph). For now the bar refreshes on navigation; a live
+        # "new story" nudge is deferred. Subscribed so the topic exists.
         pass
