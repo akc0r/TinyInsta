@@ -2,10 +2,22 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { apiFetch, type Media, type Post, type TimelinePage } from "@/lib/api"
+import { apiFetch, type Media, type Post, type Profile, type TimelinePage } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 
 export type HydratedPost = { post: Post; imageUrl: string | null }
+
+// A home-feed cell also carries its author, since the home timeline mixes posts
+// from every account the viewer follows (unlike a single-author profile grid).
+export type FeedCell = HydratedPost & { author: Profile | null }
+
+// Resolve the first media of a post to a displayable image URL (null if none).
+async function firstImageUrl(post: Post, token: string | undefined): Promise<string | null> {
+  const mediaId = post.media_ids[0]
+  if (!mediaId) return null
+  const res = await apiFetch(`/media/${mediaId}`, token)
+  return res.ok ? ((await res.json()) as Media).original_url : null
+}
 
 // Fetch a per-author timeline (post ids), hydrate the posts and their first
 // media, and expose cursor-based pagination. Shared by the home feed and the
@@ -89,6 +101,88 @@ export function useTimeline(authorId: string | undefined, pageSize = 9) {
     loadMore()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorId])
+
+  return { cells, loading, done, error, loadMore }
+}
+
+// Fetch the viewer's home timeline (the fan-out feed from hometimeline-svc),
+// hydrating each post, its first image, and its author profile. Authors are
+// cached across pages so a prolific account is only fetched once.
+export function useHomeTimeline(enabled: boolean, pageSize = 5) {
+  const { getToken } = useAuth()
+  const [cells, setCells] = useState<FeedCell[]>([])
+  const [cursor, setCursor] = useState<number | null>(null)
+  const [done, setDone] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const inFlight = useRef(false)
+  const authors = useRef<Map<string, Profile>>(new Map())
+
+  const loadMore = useCallback(async () => {
+    if (!enabled || inFlight.current || done) return
+    inFlight.current = true
+    setLoading(true)
+    try {
+      const token = getToken()
+      const qs = new URLSearchParams({ limit: String(pageSize) })
+      if (cursor !== null) qs.set("cursor", String(cursor))
+      const feedRes = await apiFetch(`/home?${qs}`, token)
+      if (!feedRes.ok) throw new Error(`home ${feedRes.status}`)
+      const feed: TimelinePage = await feedRes.json()
+
+      let hydrated: FeedCell[] = []
+      if (feed.items.length > 0) {
+        const postsRes = await apiFetch(`/posts?ids=${feed.items.join(",")}`, token)
+        if (!postsRes.ok) throw new Error(`posts ${postsRes.status}`)
+        const { items: posts }: { items: Post[] } = await postsRes.json()
+
+        // Fetch any author profiles we haven't seen yet, then read from cache.
+        const missing = [...new Set(posts.map((p) => p.author_id))].filter(
+          (id) => !authors.current.has(id),
+        )
+        await Promise.all(
+          missing.map(async (id) => {
+            const r = await apiFetch(`/users/${id}`, token)
+            if (r.ok) authors.current.set(id, (await r.json()) as Profile)
+          }),
+        )
+
+        // Keep the server's ordering: posts come back unordered, so re-sort by
+        // the post-id order the timeline gave us.
+        const rank = new Map(feed.items.map((id, i) => [id, i]))
+        posts.sort((a, b) => (rank.get(a.post_id) ?? 0) - (rank.get(b.post_id) ?? 0))
+
+        hydrated = await Promise.all(
+          posts.map(async (post) => ({
+            post,
+            imageUrl: await firstImageUrl(post, token),
+            author: authors.current.get(post.author_id) ?? null,
+          })),
+        )
+      }
+
+      if (hydrated.length > 0) {
+        setCells((prev) => {
+          const seen = new Set(prev.map((c) => c.post.post_id))
+          return [...prev, ...hydrated.filter((c) => !seen.has(c.post.post_id))]
+        })
+      }
+      setCursor(feed.next_cursor)
+      if (feed.next_cursor === null) setDone(true)
+    } catch (err) {
+      setError((err as Error).message)
+      setDone(true)
+    } finally {
+      inFlight.current = false
+      setLoading(false)
+    }
+  }, [enabled, cursor, done, getToken, pageSize])
+
+  // First page, once enabled (auth ready).
+  useEffect(() => {
+    if (enabled) loadMore()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled])
 
   return { cells, loading, done, error, loadMore }
 }

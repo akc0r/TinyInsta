@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 
 import { apiFetch, type Profile } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { useInfiniteScroll, useTimeline } from "@/lib/use-timeline"
+import { useHomeTimeline, useInfiniteScroll } from "@/lib/use-timeline"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { PostCard } from "@/components/post-card"
@@ -13,9 +13,11 @@ import { RightRail } from "@/components/right-rail"
 import { StoriesRow } from "@/components/stories-row"
 
 export default function HomePage() {
-  const { ready, authenticated, userId, getToken, login } = useAuth()
+  const { ready, authenticated, getToken, login } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
-  const { cells, loading, done, error, loadMore } = useTimeline(userId)
+  const { cells, loading, done, error, loadMore } = useHomeTimeline(
+    ready && authenticated,
+  )
   const sentinel = useInfiniteScroll(loadMore)
 
   useEffect(() => {
@@ -43,13 +45,13 @@ export default function HomePage() {
         <StoriesRow profile={profile} />
 
         <div className="space-y-2">
-          {cells.map(({ post, imageUrl }) => (
+          {cells.map(({ post, imageUrl, author }) => (
             <PostCard
               key={post.post_id}
               post={post}
               imageUrl={imageUrl}
-              authorName={profile?.username ?? "you"}
-              authorAvatar={profile?.avatar_url}
+              authorName={author?.username ?? "unknown"}
+              authorAvatar={author?.avatar_url}
             />
           ))}
 
@@ -57,9 +59,11 @@ export default function HomePage() {
 
           {cells.length === 0 && done && !error && (
             <div className="space-y-3 py-12 text-center">
-              <p className="text-sm text-muted-foreground">No posts yet.</p>
+              <p className="text-sm text-muted-foreground">
+                Your feed is empty. Follow people to see their posts here.
+              </p>
               <Button asChild size="sm">
-                <Link href="/upload">Create your first post</Link>
+                <Link href="/upload">Share your first post</Link>
               </Button>
             </div>
           )}
