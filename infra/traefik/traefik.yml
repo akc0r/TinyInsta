@@ -14,6 +14,9 @@ api:
 providers:
   docker:
     exposedByDefault: false   # a service is routed only if it sets `traefik.enable=true`
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
 
 log:
   level: INFO

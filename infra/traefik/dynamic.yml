@@ -1,0 +1,9 @@
+# Traefik dynamic configuration (file provider).
+# Shared middlewares referenced by services as `<name>@file`.
+
+http:
+  middlewares:
+    apistrip:
+      stripPrefix:
+        prefixes:
+          - "/api"

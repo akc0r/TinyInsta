@@ -16,7 +16,7 @@ x-svc-env: &svc-env
   BUS_BOOTSTRAP_SERVERS: redpanda:9092
   OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
   OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8080/realms/tinyinsta}"
-  OIDC_AUDIENCE: "${OIDC_AUDIENCE:-account}"
+  OIDC_AUDIENCE: "${OIDC_AUDIENCE:-}"
 
 x-svc-build: &svc-build
   context: .
@@ -35,10 +35,8 @@ services:
       - "8090:8090"   # Traefik dashboard
     volumes:
       - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    labels:
-      # Shared middleware: strips the /api prefix before routing to services.
-      - "traefik.http.middlewares.apistrip.stripprefix.prefixes=/api"
 
   postgres:
     image: postgres:16
@@ -80,6 +78,31 @@ services:
       - "9092:9092"
     volumes:
       - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+
+  # Pre-create the event topics so consumers subscribe to topics that already
+  # exist. Without this, a topic is created lazily on its first publish and a
+  # worker that subscribed earlier only notices it on the next metadata refresh
+  # (~5 min) — e.g. post.deleted would be ignored until then. Idempotent.
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    profiles: ["infra"]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        rpk topic create -X brokers=redpanda:9092
+        user.created user.followed user.unfollowed
+        post.created post.commented post.deleted post.liked post.unliked
+        media.uploaded media.processed
+        story.created story.viewed || true
+    restart: "no"
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
@@ -174,7 +197,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.users.rule=PathPrefix(`/api/users`)"
-      - "traefik.http.routers.users.middlewares=apistrip@docker"
+      - "traefik.http.routers.users.middlewares=apistrip@file"
 
   post-svc:
     build: { <<: *svc-build, dockerfile: services/post-svc/Dockerfile }
@@ -187,7 +210,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.posts.rule=PathPrefix(`/api/posts`)"
-      - "traefik.http.routers.posts.middlewares=apistrip@docker"
+      - "traefik.http.routers.posts.middlewares=apistrip@file"
   post-worker:
     image: tinyinsta/post-svc
     profiles: ["apps", "post-svc"]
@@ -208,7 +231,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.usertimeline.rule=PathPrefix(`/api/usertimeline`)"
-      - "traefik.http.routers.usertimeline.middlewares=apistrip@docker"
+      - "traefik.http.routers.usertimeline.middlewares=apistrip@file"
   usertimeline-worker:
     image: tinyinsta/usertimeline-svc
     profiles: ["apps", "usertimeline-svc"]
@@ -229,7 +252,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.home.rule=PathPrefix(`/api/home`)"
-      - "traefik.http.routers.home.middlewares=apistrip@docker"
+      - "traefik.http.routers.home.middlewares=apistrip@file"
   hometimeline-worker:
     image: tinyinsta/hometimeline-svc
     profiles: ["apps", "hometimeline-svc"]
@@ -250,7 +273,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.interactions.rule=PathPrefix(`/api/interactions`)"
-      - "traefik.http.routers.interactions.middlewares=apistrip@docker"
+      - "traefik.http.routers.interactions.middlewares=apistrip@file"
 
   stories-svc:
     build: { <<: *svc-build, dockerfile: services/stories-svc/Dockerfile }
@@ -262,7 +285,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.stories.rule=PathPrefix(`/api/stories`)"
-      - "traefik.http.routers.stories.middlewares=apistrip@docker"
+      - "traefik.http.routers.stories.middlewares=apistrip@file"
   stories-worker:
     image: tinyinsta/stories-svc
     profiles: ["apps", "stories-svc"]
@@ -285,10 +308,11 @@ services:
       S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
       S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
       S3_BUCKET: "${S3_BUCKET:-media}"
+      S3_PUBLIC_URL: "${S3_PUBLIC_URL:-http://localhost:9000}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.media.rule=PathPrefix(`/api/media`)"
-      - "traefik.http.routers.media.middlewares=apistrip@docker"
+      - "traefik.http.routers.media.middlewares=apistrip@file"
 
   media-worker:
     build: { <<: *svc-build, dockerfile: services/media-worker/Dockerfile }
@@ -313,7 +337,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.search.rule=PathPrefix(`/api/search`) || PathPrefix(`/api/explore`) || PathPrefix(`/api/hashtags`)"
-      - "traefik.http.routers.search.middlewares=apistrip@docker"
+      - "traefik.http.routers.search.middlewares=apistrip@file"
   search-worker:
     image: tinyinsta/search-svc
     profiles: ["apps", "search-svc"]
@@ -335,7 +359,7 @@ services:
       - "traefik.enable=true"
       # Notifications REST (/api prefix stripped)
       - "traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`)"
-      - "traefik.http.routers.notifications.middlewares=apistrip@docker"
+      - "traefik.http.routers.notifications.middlewares=apistrip@file"
       - "traefik.http.routers.notifications.service=realtime-svc"
       # WebSocket (no strip)
       - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
