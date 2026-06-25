@@ -99,6 +99,8 @@ services:
       - >-
         rpk topic create -X brokers=redpanda:9092
         user.created user.followed user.unfollowed
+        user.blocked user.unblocked
+        user.close_friend_added user.close_friend_removed
         post.created post.commented post.deleted post.liked post.unliked
         media.uploaded media.processed
         story.created story.viewed || true

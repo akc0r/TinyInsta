@@ -1,6 +1,10 @@
 USER_CREATED = "user.created"
 USER_FOLLOWED = "user.followed"
 USER_UNFOLLOWED = "user.unfollowed"
+USER_BLOCKED = "user.blocked"
+USER_UNBLOCKED = "user.unblocked"
+USER_CLOSE_FRIEND_ADDED = "user.close_friend_added"
+USER_CLOSE_FRIEND_REMOVED = "user.close_friend_removed"
 
 POST_CREATED = "post.created"
 POST_COMMENTED = "post.commented"
@@ -19,6 +23,10 @@ ALL = (
     USER_CREATED,
     USER_FOLLOWED,
     USER_UNFOLLOWED,
+    USER_BLOCKED,
+    USER_UNBLOCKED,
+    USER_CLOSE_FRIEND_ADDED,
+    USER_CLOSE_FRIEND_REMOVED,
     POST_CREATED,
     POST_COMMENTED,
     POST_DELETED,

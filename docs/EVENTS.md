@@ -7,15 +7,19 @@ TinyInsta is **event-driven**: services do not call each other directly to propa
 | Event | Emitted by | Consumed by | Key data |
 |---|---|---|---|
 | `user.created` | user-svc | search-svc, realtime-svc | `user_id, username` |
-| `user.followed` | user-svc | hometimeline-svc (back-fill), realtime-svc | `follower_id, followee_id` |
-| `user.unfollowed` | user-svc | hometimeline-svc | `follower_id, followee_id` |
+| `user.followed` | user-svc | hometimeline-svc (back-fill), stories-svc (following graph), realtime-svc | `follower_id, followee_id` |
+| `user.unfollowed` | user-svc | hometimeline-svc, stories-svc | `follower_id, followee_id` |
+| `user.blocked` | user-svc | — (also emits `user.unfollowed` for severed edges) | `blocker_id, blocked_id` |
+| `user.unblocked` | user-svc | — | `blocker_id, blocked_id` |
+| `user.close_friend_added` | user-svc | stories-svc (close-friends graph) | `owner_id, friend_id` |
+| `user.close_friend_removed` | user-svc | stories-svc | `owner_id, friend_id` |
 | `post.created` | post-svc | hometimeline-svc (fan-out), usertimeline-svc, search-svc | `post_id, author_id, created_at` |
 | `post.commented` | post-svc | realtime-svc | `post_id, comment_id, author_id, post_author_id, body` |
 | `post.deleted` | post-svc | hometimeline-svc, usertimeline-svc, search-svc | `post_id` |
 | `post.liked` | interaction-svc | realtime-svc | `post_id, user_id, new_count` |
 | `post.unliked` | interaction-svc | realtime-svc | `post_id, user_id, new_count` |
 | `media.uploaded` | media-svc | media-worker | `media_id, kind, original_url` |
-| `media.processed` | media-worker | post-svc, stories-svc | `media_id, variants` |
+| `media.processed` | media-worker | post-svc | `media_id, variants` |
 | `story.created` | stories-svc | realtime-svc | `story_id, author_id` |
 | `story.viewed` | stories-svc | — | `story_id, viewer_id` |
 

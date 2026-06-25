@@ -22,6 +22,30 @@ class UserUnfollowed:
 
 
 @dataclass(slots=True)
+class UserBlocked:
+    blocker_id: str
+    blocked_id: str
+
+
+@dataclass(slots=True)
+class UserUnblocked:
+    blocker_id: str
+    blocked_id: str
+
+
+@dataclass(slots=True)
+class UserCloseFriendAdded:
+    owner_id: str
+    friend_id: str
+
+
+@dataclass(slots=True)
+class UserCloseFriendRemoved:
+    owner_id: str
+    friend_id: str
+
+
+@dataclass(slots=True)
 class PostCreated:
     post_id: str
     author_id: str
