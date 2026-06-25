@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EditProfileDialog } from "@/components/edit-profile-dialog"
+import { FollowListDialog } from "@/components/follow-list-dialog"
 
 export function ProfileView({ userId: propUserId }: { userId?: string }) {
   const { ready, authenticated, userId: myId, getToken, login } = useAuth()
@@ -29,7 +30,16 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  const { cells, loading: gridLoading, done, error, loadMore } = useTimeline(targetId, 12)
+  const [following, setFollowing] = useState(false)
+  const [followPending, setFollowPending] = useState(false)
+
+  const {
+    cells,
+    loading: gridLoading,
+    done,
+    error,
+    loadMore,
+  } = useTimeline(targetId, 12)
   const sentinel = useInfiniteScroll(loadMore)
 
   useEffect(() => {
@@ -44,11 +54,40 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
         }
         return r.ok ? r.json() : null
       })
-      .then((p: Profile | null) => p && setProfile(p))
+      .then((p: Profile | null) => {
+        if (!p) return
+        setProfile(p)
+        setFollowing(!!p.is_following)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, authenticated, targetId])
+
+  async function toggleFollow() {
+    if (!profile || followPending) return
+    const next = !following
+    // Optimistic: flip the button and bump the visible follower count.
+    setFollowPending(true)
+    setFollowing(next)
+    setProfile((p) =>
+      p ? { ...p, followers: (p.followers ?? 0) + (next ? 1 : -1) } : p
+    )
+    try {
+      const r = await apiFetch(`/users/${profile.user_id}/follow`, getToken(), {
+        method: next ? "POST" : "DELETE",
+      })
+      if (!r.ok) throw new Error()
+    } catch {
+      // Roll back on failure.
+      setFollowing(!next)
+      setProfile((p) =>
+        p ? { ...p, followers: (p.followers ?? 0) + (next ? -1 : 1) } : p
+      )
+    } finally {
+      setFollowPending(false)
+    }
+  }
 
   if (!ready || (authenticated && loading)) return <ProfileSkeleton />
 
@@ -84,7 +123,9 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
     <div className="mx-auto max-w-[935px] px-4 py-8">
       <header className="flex flex-col items-center gap-6 px-2 sm:flex-row sm:items-start sm:gap-16">
         <Avatar className="size-20 sm:size-36">
-          {profile.avatar_url && <AvatarImage src={profile.avatar_url} alt={username} />}
+          {profile.avatar_url && (
+            <AvatarImage src={profile.avatar_url} alt={username} />
+          )}
           <AvatarFallback className="text-3xl">
             {username.charAt(0).toUpperCase()}
           </AvatarFallback>
@@ -109,8 +150,13 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
                 </Button>
               </>
             ) : (
-              <Button size="sm" title="Following — coming soon">
-                Follow
+              <Button
+                size="sm"
+                variant={following ? "outline" : "default"}
+                onClick={toggleFollow}
+                disabled={followPending}
+              >
+                {following ? "Following" : "Follow"}
               </Button>
             )}
           </div>
@@ -119,17 +165,31 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
             <span>
               <b>{postCount}</b> posts
             </span>
-            <span>
-              <b>0</b> followers
-            </span>
-            <span>
-              <b>0</b> following
-            </span>
+            <FollowListDialog
+              userId={profile.user_id}
+              kind="followers"
+              trigger={
+                <button className="hover:cursor-pointer hover:underline">
+                  <b>{profile.followers ?? 0}</b> followers
+                </button>
+              }
+            />
+            <FollowListDialog
+              userId={profile.user_id}
+              kind="following"
+              trigger={
+                <button className="hover:cursor-pointer hover:underline">
+                  <b>{profile.following ?? 0}</b> following
+                </button>
+              }
+            />
           </div>
 
           <div className="space-y-0.5 text-sm">
             {profile.name && <p className="font-semibold">{profile.name}</p>}
-            {profile.bio && <p className="whitespace-pre-line">{profile.bio}</p>}
+            {profile.bio && (
+              <p className="whitespace-pre-line">{profile.bio}</p>
+            )}
             {profile.link && (
               <a
                 href={profile.link}
@@ -192,9 +252,13 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
         </div>
       )}
       {cells.length === 0 && done && !error && (
-        <p className="py-12 text-center text-sm text-muted-foreground">No posts yet.</p>
+        <p className="py-12 text-center text-sm text-muted-foreground">
+          No posts yet.
+        </p>
       )}
-      {error && <p className="py-4 text-center text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="py-4 text-center text-sm text-destructive">{error}</p>
+      )}
       <div ref={sentinel} className="h-px" />
     </div>
   )

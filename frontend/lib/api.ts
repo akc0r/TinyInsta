@@ -33,7 +33,14 @@ export type Profile = {
   link: string
   avatar_url: string
   created_at: string
+  // Graph-derived (user-svc Phase 3); absent on list endpoints.
+  followers?: number
+  following?: number
+  is_following?: boolean
 }
+
+// A suggestion is a profile plus the number of mutual connections.
+export type Suggestion = Profile & { mutual: number }
 
 export type UploadTicket = {
   media_id: string
