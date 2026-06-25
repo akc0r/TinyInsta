@@ -3,11 +3,15 @@
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import {
+  IconBan,
   IconBookmark,
+  IconDots,
   IconHeart,
   IconLayoutGrid,
   IconLink,
   IconMessageCircle,
+  IconStar,
+  IconStarOff,
   IconUserSquareRounded,
 } from "@tabler/icons-react"
 
@@ -16,6 +20,12 @@ import { useAuth } from "@/lib/auth-context"
 import { useInfiniteScroll, useTimeline } from "@/lib/use-timeline"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EditProfileDialog } from "@/components/edit-profile-dialog"
@@ -32,6 +42,10 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
 
   const [following, setFollowing] = useState(false)
   const [followPending, setFollowPending] = useState(false)
+
+  const [blocking, setBlocking] = useState(false)
+  const [closeFriend, setCloseFriend] = useState(false)
+  const [actionPending, setActionPending] = useState(false)
 
   const {
     cells,
@@ -58,6 +72,8 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
         if (!p) return
         setProfile(p)
         setFollowing(!!p.is_following)
+        setBlocking(!!p.is_blocking)
+        setCloseFriend(!!p.is_close_friend)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -86,6 +102,46 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
       )
     } finally {
       setFollowPending(false)
+    }
+  }
+
+  // Blocking severs the follow both ways (server-side) and removes any
+  // close-friend tie, so reflect that locally on success.
+  async function toggleBlock() {
+    if (!profile || actionPending) return
+    const next = !blocking
+    setActionPending(true)
+    try {
+      const r = await apiFetch(`/users/${profile.user_id}/block`, getToken(), {
+        method: next ? "POST" : "DELETE",
+      })
+      if (!r.ok) throw new Error()
+      setBlocking(next)
+      if (next) {
+        setFollowing(false)
+        setCloseFriend(false)
+      }
+    } catch {
+      // leave state unchanged on failure
+    } finally {
+      setActionPending(false)
+    }
+  }
+
+  async function toggleCloseFriend() {
+    if (!profile || actionPending) return
+    const next = !closeFriend
+    setActionPending(true)
+    setCloseFriend(next)
+    try {
+      const r = await apiFetch(`/users/${profile.user_id}/close-friend`, getToken(), {
+        method: next ? "POST" : "DELETE",
+      })
+      if (!r.ok) throw new Error()
+    } catch {
+      setCloseFriend(!next) // roll back
+    } finally {
+      setActionPending(false)
     }
   }
 
@@ -150,14 +206,67 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
                 </Button>
               </>
             ) : (
-              <Button
-                size="sm"
-                variant={following ? "outline" : "default"}
-                onClick={toggleFollow}
-                disabled={followPending}
-              >
-                {following ? "Following" : "Follow"}
-              </Button>
+              <>
+                {blocking ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={toggleBlock}
+                    disabled={actionPending}
+                  >
+                    Unblock
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant={following ? "outline" : "default"}
+                    onClick={toggleFollow}
+                    disabled={followPending}
+                  >
+                    {following ? "Following" : "Follow"}
+                  </Button>
+                )}
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="size-8"
+                      aria-label="More options"
+                    >
+                      <IconDots className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {!blocking &&
+                      (closeFriend ? (
+                        <DropdownMenuItem
+                          onSelect={toggleCloseFriend}
+                          disabled={actionPending}
+                        >
+                          <IconStarOff className="size-4" /> Remove close friend
+                        </DropdownMenuItem>
+                      ) : (
+                        <DropdownMenuItem
+                          onSelect={toggleCloseFriend}
+                          disabled={actionPending}
+                        >
+                          <IconStar className="size-4 text-green-600" /> Add to close
+                          friends
+                        </DropdownMenuItem>
+                      ))}
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={toggleBlock}
+                      disabled={actionPending}
+                    >
+                      <IconBan className="size-4" />
+                      {blocking ? "Unblock" : "Block"}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
           </div>
 
