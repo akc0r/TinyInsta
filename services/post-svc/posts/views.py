@@ -111,9 +111,61 @@ class PostDetail(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+def _serialize_comment(c: dict) -> dict:
+    return {
+        "comment_id": c["comment_id"],
+        "author_id": c["author_id"],
+        "body": c["body"],
+        "created_at": c["created_at"],
+    }
+
+
 class Comments(APIView):
     def get(self, request, post_id):
-        raise NotImplementedError
+        doc = posts_collection().find_one({"_id": post_id}, {"comments": 1})
+        if doc is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        comments = [_serialize_comment(c) for c in doc.get("comments", [])]
+        return Response({"items": comments})
 
     def post(self, request, post_id):
-        raise NotImplementedError
+        body = (request.data.get("body") or "").strip()
+        if not body:
+            return Response(
+                {"detail": "body is required."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        comment = {
+            "comment_id": str(uuid.uuid4()),
+            "author_id": str(request.user.user_id),
+            "body": body,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        # Comments stay embedded in the post document (reasonable volume).
+        result = posts_collection().update_one(
+            {"_id": post_id}, {"$push": {"comments": comment}}
+        )
+        if result.matched_count == 0:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        doc = posts_collection().find_one({"_id": post_id}, {"author_id": 1})
+        try:
+            _producer.publish(
+                types.POST_COMMENTED,
+                {
+                    "post_id": post_id,
+                    "comment_id": comment["comment_id"],
+                    "author_id": comment["author_id"],
+                    # The post owner travels with the event so realtime-svc can
+                    # notify them without a sync call back here.
+                    "post_author_id": doc["author_id"],
+                    "body": body,
+                    "created_at": comment["created_at"],
+                },
+                key=post_id,
+            )
+            _producer.flush()
+        except Exception:  # noqa: BLE001
+            logger.warning("failed to publish post.commented", exc_info=True)
+
+        return Response(_serialize_comment(comment), status=status.HTTP_201_CREATED)
