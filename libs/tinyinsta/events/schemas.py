@@ -34,7 +34,12 @@ class PostCreated:
 class PostCommented:
     post_id: str
     comment_id: str
-    author_id: str
+    author_id: str  # the commenter
+    # The post owner, carried so realtime-svc can target a "comment" notification
+    # without a sync call back to post-svc (it is the only one that knows the owner).
+    post_author_id: str = ""
+    body: str = ""
+    created_at: str = ""
 
 
 @dataclass(slots=True)

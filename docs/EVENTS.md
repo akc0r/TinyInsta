@@ -10,7 +10,7 @@ TinyInsta is **event-driven**: services do not call each other directly to propa
 | `user.followed` | user-svc | hometimeline-svc (back-fill), realtime-svc | `follower_id, followee_id` |
 | `user.unfollowed` | user-svc | hometimeline-svc | `follower_id, followee_id` |
 | `post.created` | post-svc | hometimeline-svc (fan-out), usertimeline-svc, search-svc | `post_id, author_id, created_at` |
-| `post.commented` | post-svc | realtime-svc | `post_id, comment_id, author_id` |
+| `post.commented` | post-svc | realtime-svc | `post_id, comment_id, author_id, post_author_id, body` |
 | `post.deleted` | post-svc | hometimeline-svc, usertimeline-svc, search-svc | `post_id` |
 | `post.liked` | interaction-svc | realtime-svc | `post_id, user_id, new_count` |
 | `post.unliked` | interaction-svc | realtime-svc | `post_id, user_id, new_count` |
