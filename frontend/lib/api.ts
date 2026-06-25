@@ -71,3 +71,30 @@ export type TimelinePage = {
   items: string[]
   next_cursor: number | null
 }
+
+export type LikeStatus = {
+  post_id: string
+  count: number
+  liked: boolean
+}
+
+export type Comment = {
+  comment_id: string
+  author_id: string
+  body: string
+  created_at: string
+}
+
+export type Notification = {
+  id: string
+  notification_type: "like" | "comment" | "follow"
+  payload: Record<string, string>
+  read: boolean
+  created_at: string
+}
+
+// The realtime gateway lives at /ws (not behind the /api prefix). Prefer the
+// explicit env var, otherwise derive it from the API base.
+export const WS_URL =
+  process.env.NEXT_PUBLIC_WS_URL ??
+  API_URL.replace(/\/api\/?$/, "/ws").replace(/^http/, "ws")

@@ -18,6 +18,7 @@ import {
 } from "@tabler/icons-react"
 
 import { useAuth } from "@/lib/auth-context"
+import { useNotifications } from "@/lib/use-realtime"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -33,16 +34,31 @@ const NAV: NavItem[] = [
   { label: "Search", icon: IconSearch, disabled: true },
   { label: "Explore", icon: IconCompass, disabled: true },
   { label: "Messages", icon: IconMessageCircle, disabled: true },
-  { label: "Notifications", icon: IconHeart, disabled: true },
+  { label: "Notifications", icon: IconHeart, href: "/notifications" },
   { label: "Create", icon: IconSquareRoundedPlus, href: "/upload" },
   { label: "Profile", icon: IconUser, href: "/profile" },
 ]
 
-function NavLink({ item, active }: { item: NavItem; active: boolean }) {
+function NavLink({
+  item,
+  active,
+  badge = 0,
+}: {
+  item: NavItem
+  active: boolean
+  badge?: number
+}) {
   const Icon = item.icon
   const inner = (
     <>
-      <Icon className="size-6 shrink-0" stroke={active ? 2.4 : 1.6} />
+      <span className="relative shrink-0">
+        <Icon className="size-6" stroke={active ? 2.4 : 1.6} />
+        {badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">
+            {badge > 9 ? "9+" : badge}
+          </span>
+        )}
+      </span>
       <span className={cn("hidden xl:inline", active && "font-semibold")}>
         {item.label}
       </span>
@@ -72,6 +88,7 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
 export function AppSidebar() {
   const pathname = usePathname()
   const { ready, authenticated, login, logout } = useAuth()
+  const { unread } = useNotifications(ready && authenticated)
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[72px] flex-col border-r bg-background px-3 py-5 md:flex xl:w-[245px]">
@@ -88,6 +105,7 @@ export function AppSidebar() {
             key={item.label}
             item={item}
             active={item.href === pathname}
+            badge={item.label === "Notifications" ? unread : 0}
           />
         ))}
       </nav>
