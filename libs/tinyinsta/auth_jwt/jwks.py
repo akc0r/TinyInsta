@@ -21,7 +21,14 @@ class JWKSClient:
         resp.raise_for_status()
         keys = {}
         for jwk in resp.json().get("keys", []):
-            keys[jwk["kid"]] = PyJWK.from_dict(jwk).key
+            # Keep only signing keys: a JWKS also exposes encryption keys
+            # (use="enc", e.g. RSA-OAEP) that PyJWT cannot load for verification.
+            if jwk.get("use", "sig") != "sig":
+                continue
+            try:
+                keys[jwk["kid"]] = PyJWK.from_dict(jwk).key
+            except Exception:  # noqa: BLE001 — skip keys with unsupported algorithms
+                continue
         with self._lock:
             self._keys = keys
             self._fetched_at = time.monotonic()

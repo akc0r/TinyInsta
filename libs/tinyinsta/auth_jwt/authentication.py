@@ -41,6 +41,10 @@ class KeycloakJWTAuthentication(authentication.BaseAuthentication):
             raise exceptions.AuthenticationFailed("Malformed Authorization header.")
 
         token = header[1].decode()
+        # Audience verification is opt-in: enable it by setting OIDC_AUDIENCE and
+        # adding a matching audience mapper in Keycloak. Signature + issuer are
+        # always verified.
+        audience = os.environ.get("OIDC_AUDIENCE") or None
         try:
             kid = jwt.get_unverified_header(token)["kid"]
             key = _get_jwks_client().get_key(kid)
@@ -48,8 +52,9 @@ class KeycloakJWTAuthentication(authentication.BaseAuthentication):
                 token,
                 key=key,
                 algorithms=["RS256"],
-                audience=os.environ.get("OIDC_AUDIENCE"),
-                issuer=os.environ.get("OIDC_ISSUER"),
+                audience=audience,
+                issuer=os.environ.get("OIDC_ISSUER") or None,
+                options={"verify_aud": audience is not None},
             )
         except (jwt.PyJWTError, KeyError) as exc:
             raise exceptions.AuthenticationFailed(f"Invalid JWT: {exc}") from exc

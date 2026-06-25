@@ -13,13 +13,20 @@ SERVICE_NAME = os.environ.get("SERVICE_NAME", "tinyinsta-svc")
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "corsheaders",
     "rest_framework",
     "tinyinsta.service",
 ]
 
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
+
+# The browser calls the API through Traefik from the Next.js origin (cross-origin).
+CORS_ALLOWED_ORIGINS = os.environ.get(
+    "CORS_ALLOWED_ORIGINS", "http://localhost:3000"
+).split(",")
 
 ROOT_URLCONF = "config.urls"
 
