@@ -18,5 +18,5 @@ class Notification(models.Model):
 
     class Meta:
         db_table = "notifications"
-        indexes = [models.Index(fields=["user_id", "read"])]
+        indexes = [models.Index(fields=["user_id", "read"], name="notif_user_read_idx")]
         ordering = ["-created_at"]
