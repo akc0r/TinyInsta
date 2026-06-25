@@ -14,8 +14,8 @@ User profiles (**Postgres**) and the **social graph** (**Neo4j**). Full spec: [d
 
 ## Layout
 - `users/models.py` — `Profile` (Postgres)
-- `users/graph.py` — Neo4j access (follow / unfollow / suggestions)
-- `users/views.py` — DRF endpoints (to implement)
+- `users/graph.py` — Neo4j access (follow / unfollow / counts / suggestions)
+- `users/views.py` — DRF endpoints
 
 ## Local dev
 ```bash

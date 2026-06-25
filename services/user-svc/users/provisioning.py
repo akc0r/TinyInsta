@@ -9,6 +9,7 @@ import logging
 from tinyinsta.bus import Producer
 from tinyinsta.events import types
 
+from users import graph
 from users.models import Profile
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,10 @@ def get_or_create_profile(user) -> tuple[Profile, bool]:
         defaults={"username": user.username or str(user.user_id)},
     )
     if created:
+        try:
+            graph.ensure_user(str(profile.user_id))
+        except Exception:  # noqa: BLE001 — graph node is created lazily on follow anyway
+            logger.warning("failed to create graph node", exc_info=True)
         try:
             _producer.publish(
                 types.USER_CREATED,
