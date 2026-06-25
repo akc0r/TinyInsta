@@ -11,4 +11,4 @@ class Like(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["post_id", "user_id"], name="uniq_like"),
         ]
-        indexes = [models.Index(fields=["post_id"])]
+        indexes = [models.Index(fields=["post_id"], name="likes_post_id_idx")]

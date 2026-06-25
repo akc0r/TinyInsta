@@ -14,9 +14,17 @@ def key(post_id: str) -> str:
     return f"likes:{post_id}"
 
 
-def incr(post_id: str) -> int:
-    raise NotImplementedError
+# The like counter is a fast read model in Redis, derived from the Postgres
+# `likes` relation (the system of record for *who* liked). It is rebuildable:
+# if Redis is wiped, the next read/write re-projects it from Postgres. We
+# write-through the authoritative Postgres count after each mutation rather than
+# blind INCR/DECR, so the counter can never drift on retries/double-clicks
+# (the (post_id, user_id) PK already makes the like itself idempotent).
+def set_count(post_id: str, count: int) -> int:
+    get_redis().set(key(post_id), count)
+    return count
 
 
-def decr(post_id: str) -> int:
-    raise NotImplementedError
+def get_count(post_id: str) -> int | None:
+    value = get_redis().get(key(post_id))
+    return int(value) if value is not None else None
