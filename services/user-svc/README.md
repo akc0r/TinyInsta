@@ -6,16 +6,20 @@ User profiles (**Postgres**) and the **social graph** (**Neo4j**). Full spec: [d
 |---|---|
 | Stores | Postgres (`profiles`) + Neo4j (graph) |
 | Auth | Keycloak JWT (JWKS) |
-| Emits | `user.created`, `user.followed`, `user.unfollowed` |
+| Emits | `user.created`, `user.followed/unfollowed`, `user.blocked/unblocked`, `user.close_friend_added/removed` |
 | Consumes | — |
 
 ## Endpoints (Traefik prefix `/api`)
-`GET /users/{id}` · `PATCH /users/me` · `POST\|DELETE /users/{id}/follow` · `GET /users/{id}/followers` · `GET /users/{id}/following` · `GET /users/me/suggestions`
+`GET /users/{id}` · `PATCH /users/me` · `POST\|DELETE /users/{id}/follow` · `POST\|DELETE /users/{id}/block` · `POST\|DELETE /users/{id}/close-friend` · `GET /users/me/close-friends` · `GET /users/{id}/followers` · `GET /users/{id}/following` · `GET /users/me/suggestions`
 
 ## Layout
 - `users/models.py` — `Profile` (Postgres)
-- `users/graph.py` — Neo4j access (follow / unfollow / counts / suggestions)
+- `users/graph.py` — Neo4j access (follow, block, close-friend, counts, suggestions)
 - `users/views.py` — DRF endpoints
+
+Blocking severs `FOLLOWS`/`CLOSE_FRIEND` edges both ways and re-emits the
+matching `user.unfollowed` / `user.close_friend_removed` events so the feed read
+models converge. See [docs/user-svc.md](../../docs/user-svc.md) for the scope note.
 
 ## Local dev
 ```bash

@@ -5,12 +5,12 @@ One directory per **bounded context**. All HTTP services share the same structur
 
 | Service | Store(s) | Emits | Consumes |
 |---|---|---|---|
-| [user-svc](user-svc) | Postgres + Neo4j | user.created/followed/unfollowed | — |
+| [user-svc](user-svc) | Postgres + Neo4j | user.created/followed/unfollowed, user.blocked/unblocked, user.close_friend_added/removed | — |
 | [post-svc](post-svc) | MongoDB | post.created/commented/deleted | media.processed |
 | [usertimeline-svc](usertimeline-svc) | Redis | — | post.created/deleted |
 | [hometimeline-svc](hometimeline-svc) | Redis | — | post.created, user.followed/unfollowed, post.deleted |
 | [interaction-svc](interaction-svc) | Postgres + Redis | post.liked/unliked | — |
-| [stories-svc](stories-svc) | Postgres + Redis | story.created/viewed | media.processed |
+| [stories-svc](stories-svc) | Postgres + Redis | story.created/viewed | user.followed/unfollowed, user.close_friend_added/removed |
 | [media-svc](media-svc) | MinIO + MongoDB | media.uploaded | — |
 | [media-worker](media-worker) | MinIO | media.processed | media.uploaded |
 | [search-svc](search-svc) | Elasticsearch | — | user.created, post.created/deleted |
