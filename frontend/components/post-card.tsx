@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { type FormEvent, useEffect, useRef, useState } from "react"
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   IconBookmark,
   IconDots,
@@ -11,13 +11,21 @@ import {
   IconSend,
 } from "@tabler/icons-react"
 
-import { apiFetch, type Comment, type LikeStatus, type Post } from "@/lib/api"
+import { apiFetch, type Comment, type LikeStatus, type Post, type Profile } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { usePostRealtime } from "@/lib/use-realtime"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import {
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
 import { Input } from "@/components/ui/input"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 
 function timeAgo(iso: string): string {
@@ -28,6 +36,55 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d`
 }
 
+// ---------------------------------------------------------------------------
+// Shared author-username cache (module-scoped so all PostCard instances share
+// it within the same page). Maps author_id → username.
+// ---------------------------------------------------------------------------
+const usernameCache = new Map<string, string>()
+const inflight = new Map<string, Promise<string>>()
+
+async function resolveUsername(authorId: string, token: string | undefined): Promise<string> {
+  const cached = usernameCache.get(authorId)
+  if (cached) return cached
+
+  // Deduplicate concurrent requests for the same author.
+  let p = inflight.get(authorId)
+  if (!p) {
+    p = apiFetch(`/users/${authorId}`, token)
+      .then(async (r) => {
+        if (!r.ok) return authorId.slice(0, 8)
+        const profile: Profile = await r.json()
+        const name = profile.username || authorId.slice(0, 8)
+        usernameCache.set(authorId, name)
+        return name
+      })
+      .catch(() => authorId.slice(0, 8))
+      .finally(() => inflight.delete(authorId))
+    inflight.set(authorId, p)
+  }
+  return p
+}
+
+// ---------------------------------------------------------------------------
+// Hook: useIsMobile  –  true when viewport width < 640px (sm breakpoint).
+// ---------------------------------------------------------------------------
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false)
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)")
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => setMobile(e.matches)
+    handler(mq)
+    mq.addEventListener("change", handler as (e: MediaQueryListEvent) => void)
+    return () => mq.removeEventListener("change", handler as (e: MediaQueryListEvent) => void)
+  }, [])
+  return mobile
+}
+
+// ---------------------------------------------------------------------------
+// A comment with its author username resolved.
+// ---------------------------------------------------------------------------
+type ResolvedComment = Comment & { authorName: string }
+
 export type PostCardProps = {
   post: Post
   imageUrl: string | null
@@ -37,11 +94,13 @@ export type PostCardProps = {
 
 export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardProps) {
   const { getToken } = useAuth()
+  const isMobile = useIsMobile()
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
-  const [comments, setComments] = useState<Comment[]>([])
+  const [comments, setComments] = useState<ResolvedComment[]>([])
   const [commentCount, setCommentCount] = useState(0)
   const [showComments, setShowComments] = useState(false)
+  const [captionExpanded, setCaptionExpanded] = useState(false)
   const [draft, setDraft] = useState("")
   const [posting, setPosting] = useState(false)
   const pending = useRef(false)
@@ -60,13 +119,28 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.post_id])
 
-  const loadComments = async () => {
+  // Resolve comment author ids → usernames.
+  const resolveComments = useCallback(
+    async (items: Comment[]): Promise<ResolvedComment[]> => {
+      const token = getToken()
+      return Promise.all(
+        items.map(async (c) => ({
+          ...c,
+          authorName: await resolveUsername(c.author_id, token),
+        })),
+      )
+    },
+    [getToken],
+  )
+
+  const loadComments = useCallback(async () => {
     const res = await apiFetch(`/posts/${post.post_id}/comments`, getToken())
     if (!res.ok) return
     const { items }: { items: Comment[] } = await res.json()
-    setComments(items)
-    setCommentCount(items.length)
-  }
+    const resolved = await resolveComments(items)
+    setComments(resolved)
+    setCommentCount(resolved.length)
+  }, [post.post_id, getToken, resolveComments])
 
   // Live counters pushed from other clients (or our own other devices).
   usePostRealtime(post.post_id, {
@@ -119,7 +193,8 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
       )
       if (res.ok) {
         const comment: Comment = await res.json()
-        setComments((prev) => [...prev, comment])
+        const resolved = await resolveComments([comment])
+        setComments((prev) => [...prev, ...resolved])
         setCommentCount((n) => n + 1)
         setShowComments(true)
         setDraft("")
@@ -128,6 +203,54 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
       setPosting(false)
     }
   }
+
+  // -----------------------------------------------------------------------
+  // Caption: show only first line, with "more" to expand.
+  // -----------------------------------------------------------------------
+  const firstLine = post.caption?.split("\n")[0] ?? ""
+  const hasMore = post.caption ? post.caption.includes("\n") || post.caption.length > 120 : false
+
+  // -----------------------------------------------------------------------
+  // Comment list + input (shared between inline and drawer).
+  // -----------------------------------------------------------------------
+  const commentListAndInput = (
+    <>
+      <div className="space-y-2">
+        {comments.map((c) => (
+          <p key={c.comment_id} className="text-sm">
+            <Link
+              href={`/profile/${c.author_id}`}
+              className="font-semibold hover:underline"
+            >
+              {c.authorName}
+            </Link>{" "}
+            <span>{c.body}</span>
+          </p>
+        ))}
+        {comments.length === 0 && (
+          <p className="text-xs text-muted-foreground py-2">No comments yet.</p>
+        )}
+      </div>
+
+      <form className="flex items-center gap-2 pt-2" onSubmit={submitComment}>
+        <Input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          placeholder="Add a comment…"
+          className="h-8 border-0 px-1 shadow-none focus-visible:ring-0"
+        />
+        <Button
+          type="submit"
+          variant="ghost"
+          size="sm"
+          className={cn("font-semibold text-primary")}
+          disabled={!draft.trim() || posting}
+        >
+          Post
+        </Button>
+      </form>
+    </>
+  )
 
   return (
     <article className="border-b pb-3">
@@ -203,54 +326,60 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
             >
               {authorName}
             </Link>{" "}
-            <span>{post.caption}</span>
+            {captionExpanded ? (
+              <span className="whitespace-pre-line">{post.caption}</span>
+            ) : (
+              <>
+                <span>{firstLine.length > 120 ? firstLine.slice(0, 120) + "…" : firstLine}</span>
+                {hasMore && (
+                  <button
+                    type="button"
+                    onClick={() => setCaptionExpanded(true)}
+                    className="ml-1 text-muted-foreground hover:underline"
+                  >
+                    more
+                  </button>
+                )}
+              </>
+            )}
           </p>
         )}
 
-        {commentCount > 0 && (
-          <button
-            type="button"
-            onClick={toggleComments}
-            className="text-sm text-muted-foreground hover:underline"
-          >
-            {showComments
-              ? "Hide comments"
-              : `View all ${commentCount} comment${commentCount === 1 ? "" : "s"}`}
-          </button>
-        )}
+        {/* Toggle comments button — always visible */}
+        <button
+          type="button"
+          onClick={toggleComments}
+          className="text-sm text-muted-foreground hover:underline"
+        >
+          {showComments
+            ? "Hide comments"
+            : commentCount > 0
+              ? `View all ${commentCount} comment${commentCount === 1 ? "" : "s"}`
+              : "Comments"}
+        </button>
 
-        {showComments &&
-          comments.map((c) => (
-            <p key={c.comment_id} className="text-sm">
-              <Link
-                href={`/profile/${c.author_id}`}
-                className="font-semibold hover:underline"
-              >
-                {c.author_id.slice(0, 8)}
-              </Link>{" "}
-              <span>{c.body}</span>
-            </p>
-          ))}
+        {/* Desktop inline comments — hidden on mobile since we use a drawer there */}
+        {!isMobile && showComments && (
+          <div className="pt-1">
+            {commentListAndInput}
+            <Separator className="mt-3" />
+          </div>
+        )}
       </div>
 
-      <Separator className="mt-3" />
-      <form className="flex items-center gap-2 pt-1" onSubmit={submitComment}>
-        <Input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder="Add a comment…"
-          className="h-8 border-0 px-1 shadow-none focus-visible:ring-0"
-        />
-        <Button
-          type="submit"
-          variant="ghost"
-          size="sm"
-          className={cn("font-semibold text-primary")}
-          disabled={!draft.trim() || posting}
-        >
-          Post
-        </Button>
-      </form>
+      {/* Mobile drawer for comments */}
+      {isMobile && (
+        <Drawer open={showComments} onOpenChange={setShowComments}>
+          <DrawerContent>
+            <DrawerHeader>
+              <DrawerTitle>Comments</DrawerTitle>
+            </DrawerHeader>
+            <ScrollArea className="max-h-[60vh] overflow-y-auto px-4 pb-4">
+              {commentListAndInput}
+            </ScrollArea>
+          </DrawerContent>
+        </Drawer>
+      )}
     </article>
   )
 }
