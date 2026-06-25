@@ -22,12 +22,18 @@ def remove_post(author_id: str, post_id: str) -> None:
     get_redis().zrem(key(author_id), post_id)
 
 
-def page(author_id: str, cursor: str | None, limit: int = 20) -> dict:
+def page(
+    author_id: str, cursor: str | None, limit: int = 20, with_scores: bool = False
+) -> dict:
     """Keyset pagination over the sorted set, newest first.
 
     `cursor` is the score of the last item from the previous page; it is
     excluded so pages never overlap. Returns the post ids plus the score to
     pass as the next cursor (None when the last page has been reached).
+
+    With `with_scores`, each item is returned as a `[post_id, score]` pair
+    instead of a bare id. hometimeline-svc uses this to back-fill a follower's
+    home timeline with the followee's posts at their original timestamps.
     """
     max_score = f"({cursor}" if cursor else "+inf"
     rows = get_redis().zrevrangebyscore(
@@ -38,6 +44,9 @@ def page(author_id: str, cursor: str | None, limit: int = 20) -> dict:
         num=limit,
         withscores=True,
     )
-    items = [post_id for post_id, _ in rows]
+    if with_scores:
+        items = [[post_id, score] for post_id, score in rows]
+    else:
+        items = [post_id for post_id, _ in rows]
     next_cursor = rows[-1][1] if len(rows) == limit else None
     return {"items": items, "next_cursor": next_cursor}
