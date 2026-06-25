@@ -25,6 +25,32 @@ export async function putToStorage(uploadUrl: string, file: File): Promise<Respo
   })
 }
 
+// The full presigned upload dance: ask media-svc for a URL, PUT the bytes to
+// storage, then register the media. Returns the new media id (resolve it to a
+// URL later via GET /media/{id}). Shared by the post and story flows.
+export async function uploadMedia(
+  token: string | undefined,
+  file: File,
+  kind = "image",
+): Promise<string> {
+  const ticketRes = await apiFetch("/media/upload-url", token, {
+    method: "POST",
+    body: JSON.stringify({ kind }),
+  })
+  if (!ticketRes.ok) throw new Error(`upload-url ${ticketRes.status}`)
+  const ticket: UploadTicket = await ticketRes.json()
+
+  const putRes = await putToStorage(ticket.upload_url, file)
+  if (!putRes.ok) throw new Error(`storage PUT ${putRes.status}`)
+
+  const mediaRes = await apiFetch("/media", token, {
+    method: "POST",
+    body: JSON.stringify({ media_id: ticket.media_id, kind }),
+  })
+  if (!mediaRes.ok) throw new Error(`media ${mediaRes.status}`)
+  return ticket.media_id
+}
+
 export type Profile = {
   user_id: string
   username: string
@@ -37,6 +63,9 @@ export type Profile = {
   followers?: number
   following?: number
   is_following?: boolean
+  // Viewer ↔ profile relationship (only on the detail endpoint, not on self).
+  is_blocking?: boolean
+  is_close_friend?: boolean
 }
 
 // A suggestion is a profile plus the number of mutual connections.
@@ -70,6 +99,26 @@ export type Media = {
 export type TimelinePage = {
   items: string[]
   next_cursor: number | null
+}
+
+export type StoryAudience = "public" | "close_friends"
+
+// One ephemeral story. `viewed` is relative to the requesting viewer.
+export type Story = {
+  story_id: string
+  author_id: string
+  media_id: string
+  audience: StoryAudience
+  created_at: string
+  expires_at: string
+  viewed: boolean
+}
+
+// The story bar groups active stories by author; `has_unseen` drives the ring.
+export type StoryGroup = {
+  author_id: string
+  stories: Story[]
+  has_unseen: boolean
 }
 
 export type LikeStatus = {
