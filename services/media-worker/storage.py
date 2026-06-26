@@ -15,6 +15,9 @@ S3_ACCESS_KEY = os.environ.get("S3_ACCESS_KEY", "minioadmin")
 S3_SECRET_KEY = os.environ.get("S3_SECRET_KEY", "minioadmin")
 S3_BUCKET = os.environ.get("S3_BUCKET", "media")
 S3_PUBLIC_URL = os.environ.get("S3_PUBLIC_URL", "http://localhost:9000")
+# Variants are served through the CDN cache when configured (defaults to the
+# public endpoint).
+S3_CDN_URL = os.environ.get("S3_CDN_URL", S3_PUBLIC_URL)
 
 
 @lru_cache(maxsize=1)
@@ -41,7 +44,7 @@ def key_from_url(url: str) -> str:
 
 
 def public_url(object_key: str) -> str:
-    return f"{S3_PUBLIC_URL}/{S3_BUCKET}/{object_key}"
+    return f"{S3_CDN_URL}/{S3_BUCKET}/{object_key}"
 
 
 def download(object_key: str) -> bytes:

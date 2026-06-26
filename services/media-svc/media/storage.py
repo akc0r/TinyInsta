@@ -41,4 +41,5 @@ def presigned_put_url(object_key: str, expires: int = 3600) -> str:
 
 
 def object_url(object_key: str) -> str:
-    return f"{settings.S3_PUBLIC_URL}/{settings.S3_BUCKET}/{object_key}"
+    # Reads go through the CDN cache (S3_CDN_URL); uploads keep using S3_PUBLIC_URL.
+    return f"{settings.S3_CDN_URL}/{settings.S3_BUCKET}/{object_key}"
