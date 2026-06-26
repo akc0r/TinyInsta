@@ -3,7 +3,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL!
 export async function apiFetch(
   path: string,
   token: string | undefined,
-  init: RequestInit = {},
+  init: RequestInit = {}
 ): Promise<Response> {
   return fetch(`${API_URL}${path}`, {
     ...init,
@@ -17,7 +17,10 @@ export async function apiFetch(
 
 // Upload bytes straight to object storage. The presigned URL carries its own
 // auth, so we must NOT attach the Bearer token here.
-export async function putToStorage(uploadUrl: string, file: File): Promise<Response> {
+export async function putToStorage(
+  uploadUrl: string,
+  file: File
+): Promise<Response> {
   return fetch(uploadUrl, {
     method: "PUT",
     body: file,
@@ -31,7 +34,7 @@ export async function putToStorage(uploadUrl: string, file: File): Promise<Respo
 export async function uploadMedia(
   token: string | undefined,
   file: File,
-  kind = "image",
+  kind = "image"
 ): Promise<string> {
   const ticketRes = await apiFetch("/media/upload-url", token, {
     method: "POST",
@@ -83,6 +86,7 @@ export type Post = {
   caption: string
   hashtags: string[]
   media_ids: string[]
+  comment_count: number
   created_at: string
 }
 
@@ -120,6 +124,26 @@ export type StoryGroup = {
   stories: Story[]
   has_unseen: boolean
 }
+
+// search-svc read model (Elasticsearch). Hits are projections of events, so a
+// post hit carries no media_ids — resolve those from post-svc when hydrating.
+export type UserHit = {
+  user_id: string
+  username: string
+  bio: string
+}
+
+export type PostHit = {
+  post_id: string
+  author_id: string
+  caption: string
+  hashtags: string[]
+  created_at: string
+}
+
+export type SearchResults = { users: UserHit[]; posts: PostHit[] }
+
+export type HashtagPage = { tag: string; items: PostHit[] }
 
 export type LikeStatus = {
   post_id: string

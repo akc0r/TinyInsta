@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 
-import { apiFetch, type Media, type Post, type Profile, type TimelinePage } from "@/lib/api"
+import {
+  apiFetch,
+  type Media,
+  type Post,
+  type Profile,
+  type TimelinePage,
+} from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 
 export type HydratedPost = { post: Post; imageUrl: string | null }
@@ -12,11 +18,36 @@ export type HydratedPost = { post: Post; imageUrl: string | null }
 export type FeedCell = HydratedPost & { author: Profile | null }
 
 // Resolve the first media of a post to a displayable image URL (null if none).
-async function firstImageUrl(post: Post, token: string | undefined): Promise<string | null> {
+async function firstImageUrl(
+  post: Post,
+  token: string | undefined
+): Promise<string | null> {
   const mediaId = post.media_ids[0]
   if (!mediaId) return null
   const res = await apiFetch(`/media/${mediaId}`, token)
   return res.ok ? ((await res.json()) as Media).original_url : null
+}
+
+// Hydrate a bare list of post ids into displayable cells: fetch the posts from
+// post-svc (the source of truth for media), resolve each first image, and keep
+// the input order. Used by the explore grid and hashtag pages, whose ids come
+// from the search read model (which doesn't store media).
+export async function hydratePostIds(
+  ids: string[],
+  token: string | undefined
+): Promise<HydratedPost[]> {
+  if (ids.length === 0) return []
+  const postsRes = await apiFetch(`/posts?ids=${ids.join(",")}`, token)
+  if (!postsRes.ok) throw new Error(`posts ${postsRes.status}`)
+  const { items: posts }: { items: Post[] } = await postsRes.json()
+  const rank = new Map(ids.map((id, i) => [id, i]))
+  posts.sort((a, b) => (rank.get(a.post_id) ?? 0) - (rank.get(b.post_id) ?? 0))
+  return Promise.all(
+    posts.map(async (post) => ({
+      post,
+      imageUrl: await firstImageUrl(post, token),
+    }))
+  )
 }
 
 // Fetch a per-author timeline (post ids), hydrate the posts and their first
@@ -50,7 +81,10 @@ export function useTimeline(authorId: string | undefined, pageSize = 9) {
 
       let hydrated: HydratedPost[] = []
       if (tl.items.length > 0) {
-        const postsRes = await apiFetch(`/posts?ids=${tl.items.join(",")}`, token)
+        const postsRes = await apiFetch(
+          `/posts?ids=${tl.items.join(",")}`,
+          token
+        )
         if (!postsRes.ok) throw new Error(`posts ${postsRes.status}`)
         const { items: posts }: { items: Post[] } = await postsRes.json()
 
@@ -60,10 +94,11 @@ export function useTimeline(authorId: string | undefined, pageSize = 9) {
             let imageUrl: string | null = null
             if (mediaId) {
               const mRes = await apiFetch(`/media/${mediaId}`, token)
-              if (mRes.ok) imageUrl = ((await mRes.json()) as Media).original_url
+              if (mRes.ok)
+                imageUrl = ((await mRes.json()) as Media).original_url
             }
             return { post, imageUrl }
-          }),
+          })
         )
       }
 
@@ -132,32 +167,37 @@ export function useHomeTimeline(enabled: boolean, pageSize = 5) {
 
       let hydrated: FeedCell[] = []
       if (feed.items.length > 0) {
-        const postsRes = await apiFetch(`/posts?ids=${feed.items.join(",")}`, token)
+        const postsRes = await apiFetch(
+          `/posts?ids=${feed.items.join(",")}`,
+          token
+        )
         if (!postsRes.ok) throw new Error(`posts ${postsRes.status}`)
         const { items: posts }: { items: Post[] } = await postsRes.json()
 
         // Fetch any author profiles we haven't seen yet, then read from cache.
         const missing = [...new Set(posts.map((p) => p.author_id))].filter(
-          (id) => !authors.current.has(id),
+          (id) => !authors.current.has(id)
         )
         await Promise.all(
           missing.map(async (id) => {
             const r = await apiFetch(`/users/${id}`, token)
             if (r.ok) authors.current.set(id, (await r.json()) as Profile)
-          }),
+          })
         )
 
         // Keep the server's ordering: posts come back unordered, so re-sort by
         // the post-id order the timeline gave us.
         const rank = new Map(feed.items.map((id, i) => [id, i]))
-        posts.sort((a, b) => (rank.get(a.post_id) ?? 0) - (rank.get(b.post_id) ?? 0))
+        posts.sort(
+          (a, b) => (rank.get(a.post_id) ?? 0) - (rank.get(b.post_id) ?? 0)
+        )
 
         hydrated = await Promise.all(
           posts.map(async (post) => ({
             post,
             imageUrl: await firstImageUrl(post, token),
             author: authors.current.get(post.author_id) ?? null,
-          })),
+          }))
         )
       }
 

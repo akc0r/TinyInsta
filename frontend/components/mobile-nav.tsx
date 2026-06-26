@@ -15,9 +15,9 @@ import { cn } from "@/lib/utils"
 
 const TABS: { label: string; icon: Icon; href: string }[] = [
   { label: "Home", icon: IconHome, href: "/" },
-  { label: "Explore", icon: IconCompass, href: "/" },
+  { label: "Explore", icon: IconCompass, href: "/explore" },
   { label: "Create", icon: IconSquareRoundedPlus, href: "/upload" },
-  { label: "Search", icon: IconSearch, href: "/" },
+  { label: "Search", icon: IconSearch, href: "/search" },
   { label: "Profile", icon: IconUser, href: "/profile" },
 ]
 

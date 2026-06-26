@@ -31,8 +31,8 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { label: "Home", icon: IconHome, href: "/" },
-  { label: "Search", icon: IconSearch, disabled: true },
-  { label: "Explore", icon: IconCompass, disabled: true },
+  { label: "Search", icon: IconSearch, href: "/search" },
+  { label: "Explore", icon: IconCompass, href: "/explore" },
   { label: "Messages", icon: IconMessageCircle, disabled: true },
   { label: "Notifications", icon: IconHeart, href: "/notifications" },
   { label: "Create", icon: IconSquareRoundedPlus, href: "/upload" },

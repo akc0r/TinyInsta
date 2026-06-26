@@ -6,10 +6,8 @@ import {
   IconBan,
   IconBookmark,
   IconDots,
-  IconHeart,
   IconLayoutGrid,
   IconLink,
-  IconMessageCircle,
   IconStar,
   IconStarOff,
   IconUserSquareRounded,
@@ -30,6 +28,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { EditProfileDialog } from "@/components/edit-profile-dialog"
 import { FollowListDialog } from "@/components/follow-list-dialog"
+import { PostGrid } from "@/components/post-grid"
 
 export function ProfileView({ userId: propUserId }: { userId?: string }) {
   const { ready, authenticated, userId: myId, getToken, login } = useAuth()
@@ -134,9 +133,13 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
     setActionPending(true)
     setCloseFriend(next)
     try {
-      const r = await apiFetch(`/users/${profile.user_id}/close-friend`, getToken(), {
-        method: next ? "POST" : "DELETE",
-      })
+      const r = await apiFetch(
+        `/users/${profile.user_id}/close-friend`,
+        getToken(),
+        {
+          method: next ? "POST" : "DELETE",
+        }
+      )
       if (!r.ok) throw new Error()
     } catch {
       setCloseFriend(!next) // roll back
@@ -252,8 +255,8 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
                           onSelect={toggleCloseFriend}
                           disabled={actionPending}
                         >
-                          <IconStar className="size-4 text-green-600" /> Add to close
-                          friends
+                          <IconStar className="size-4 text-green-600" /> Add to
+                          close friends
                         </DropdownMenuItem>
                       ))}
                     <DropdownMenuItem
@@ -327,30 +330,8 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
         </span>
       </div>
 
-      <div className="mt-1 grid grid-cols-3 gap-1">
-        {cells.map(({ post, imageUrl }) => (
-          <div
-            key={post.post_id}
-            className="group relative aspect-square overflow-hidden bg-muted"
-          >
-            {imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imageUrl}
-                alt={post.caption}
-                className="h-full w-full object-cover"
-              />
-            )}
-            <div className="absolute inset-0 hidden items-center justify-center gap-6 bg-black/30 text-sm font-semibold text-white group-hover:flex">
-              <span className="flex items-center gap-1.5">
-                <IconHeart className="size-5 fill-white" /> 0
-              </span>
-              <span className="flex items-center gap-1.5">
-                <IconMessageCircle className="size-5 fill-white" /> 0
-              </span>
-            </div>
-          </div>
-        ))}
+      <div className="mt-1">
+        <PostGrid cells={cells} />
       </div>
 
       {gridLoading && (
