@@ -1,0 +1,13 @@
+# Lint config shared by CI and local runs. Kept deliberately light: the high-value
+# correctness rules (pyflakes) plus import hygiene, without restyling the code.
+target-version = "py312"
+line-length = 100
+extend-exclude = ["frontend", "**/migrations/*"]
+
+[lint]
+select = ["F", "I"]
+
+[lint.per-file-ignores]
+# Settings modules re-export via star-imports on purpose.
+"**/config/settings.py" = ["F401", "F403", "F405"]
+"libs/tinyinsta/service/settings.py" = ["F401", "F403"]
