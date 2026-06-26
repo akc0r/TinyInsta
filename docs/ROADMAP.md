@@ -41,12 +41,18 @@ follow/unfollow in Neo4j (`user-svc`), "people you may know" suggestions (2nd de
 `media-worker`, thumbnails (Pillow) + 720p transcode (ffmpeg), `media.uploaded` → `media.processed`.
 **Demo:** I upload a video → thumbnail + 720p variant generated automatically.
 
-### Phase 9 — Notifications + observability + polish
-Notification feed, correlated JSON logs, Prometheus/Grafana, Kibana, rate limiting, seed of 10k users + 1 "celebrity".
+### Phase 9 — Notifications + observability + polish ✅
+Notification feed (realtime-svc), correlated JSON logs (`tinyinsta.observability`,
+`correlation_id` across HTTP + bus), Prometheus/Grafana + Filebeat/Kibana (compose
+profile `observability`), rate limiting (Traefik `ratelimit@file`), seed of 10k
+users + 1 "celebrity" (`user-svc … manage.py seed`).
 **Demo:** live notification center + dashboards.
 
-### Phase 10 — Scale & ops *(optional)*
-Hybrid fan-out (celebrities), Kubernetes, nginx/CDN in front of MinIO, CI/CD, Capacitor mobile, and **option: rewrite one service in Java/Spring** (a demo of the polyglot service swap + a Java market signal).
+### Phase 10 — Scale & ops *(optional)* — *delivered, minus Java/Capacitor*
+Hybrid fan-out for celebrities (`hometimeline-svc`: read-time merge above
+`CELEBRITY_FOLLOWER_THRESHOLD`), Kubernetes (`infra/k8s`, kustomize), nginx/CDN in
+front of MinIO (`infra/nginx`, `S3_CDN_URL`), CI/CD (`.github/workflows/ci.yml`).
+Capacitor mobile and the optional Java/Spring service swap are intentionally not done.
 **Demo:** deployed on a cluster, *hot-user* handled.
 
 ---

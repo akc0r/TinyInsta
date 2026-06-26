@@ -33,12 +33,16 @@ Every message follows a common envelope:
   "type": "post.created",
   "occurred_at": "2026-06-23T21:00:00Z",
   "version": 1,
+  "correlation_id": "hex-trace-id",
   "data": { "post_id": "...", "author_id": "...", "created_at": "..." }
 }
 ```
 
 - `event_id`: unique identifier → used for **deduplication** on the consumer side.
 - `version`: schema versioning → lets payloads evolve without breaking consumers.
+- `correlation_id`: the originating request's trace id, set by the producer from
+  the ambient context and re-bound by each consumer → one user action is
+  traceable across services in the JSON logs (see `tinyinsta.observability`).
 
 ## Conventions
 
