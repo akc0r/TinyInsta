@@ -1,0 +1,57 @@
+# nginx caching CDN in front of MinIO (mirrors the compose nginx-cdn) ...
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: nginx-cdn, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: nginx-cdn } }
+  template:
+    metadata: { labels: { app: nginx-cdn } }
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports: [{ containerPort: 80 }]
+          volumeMounts:
+            - { name: conf, mountPath: /etc/nginx/conf.d, readOnly: true }
+      volumes:
+        - name: conf
+          configMap:
+            name: nginx-cdn-conf
+            items: [{ key: nginx.conf, path: default.conf }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: nginx-cdn, namespace: tinyinsta }
+spec:
+  selector: { app: nginx-cdn }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+# Single ingress fanning /api/<svc>, /ws and /cdn to the right backend. Uses
+# ingress-nginx regex rewrite: each path captures the segment to keep, and the
+# shared rewrite-target /$1 drops the /api (or /cdn) gateway prefix — the same
+# job Traefik's stripPrefix middleware does in docker-compose.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tinyinsta
+  namespace: tinyinsta
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - { path: /api/(users.*), pathType: ImplementationSpecific, backend: { service: { name: user-svc, port: { number: 8000 } } } }
+          - { path: /api/(posts.*), pathType: ImplementationSpecific, backend: { service: { name: post-svc, port: { number: 8000 } } } }
+          - { path: /api/(usertimeline.*), pathType: ImplementationSpecific, backend: { service: { name: usertimeline-svc, port: { number: 8000 } } } }
+          - { path: /api/(home.*), pathType: ImplementationSpecific, backend: { service: { name: hometimeline-svc, port: { number: 8000 } } } }
+          - { path: /api/(interactions.*), pathType: ImplementationSpecific, backend: { service: { name: interaction-svc, port: { number: 8000 } } } }
+          - { path: /api/(stories.*), pathType: ImplementationSpecific, backend: { service: { name: stories-svc, port: { number: 8000 } } } }
+          - { path: /api/(media.*), pathType: ImplementationSpecific, backend: { service: { name: media-svc, port: { number: 8000 } } } }
+          - { path: /api/(search.*), pathType: ImplementationSpecific, backend: { service: { name: search-svc, port: { number: 8000 } } } }
+          - { path: /api/(notifications.*), pathType: ImplementationSpecific, backend: { service: { name: realtime-svc, port: { number: 8000 } } } }
+          - { path: /(ws.*), pathType: ImplementationSpecific, backend: { service: { name: realtime-svc, port: { number: 8000 } } } }
+          - { path: /cdn/(.*), pathType: ImplementationSpecific, backend: { service: { name: nginx-cdn, port: { number: 80 } } } }

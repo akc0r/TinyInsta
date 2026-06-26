@@ -1,0 +1,135 @@
+# Bus workers — Deployments only (no Service: they consume, they don't serve).
+# Each reuses its service image with `python manage.py consume`; media-worker is
+# its own image (worker.py is its default entrypoint).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: post-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: post-worker } }
+  template:
+    metadata: { labels: { app: post-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/post-svc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "manage.py", "consume"]
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: post-svc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: usertimeline-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: usertimeline-worker } }
+  template:
+    metadata: { labels: { app: usertimeline-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/usertimeline-svc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "manage.py", "consume"]
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: usertimeline-svc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: hometimeline-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: hometimeline-worker } }
+  template:
+    metadata: { labels: { app: hometimeline-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/hometimeline-svc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "manage.py", "consume"]
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: hometimeline-svc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: stories-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: stories-worker } }
+  template:
+    metadata: { labels: { app: stories-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/stories-svc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "manage.py", "consume"]
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: stories-svc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: search-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: search-worker } }
+  template:
+    metadata: { labels: { app: search-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/search-svc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "manage.py", "consume"]
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: search-svc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: realtime-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: realtime-worker } }
+  template:
+    metadata: { labels: { app: realtime-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/realtime-svc:latest
+          imagePullPolicy: IfNotPresent
+          command: ["python", "manage.py", "consume"]
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: realtime-svc }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: media-worker, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: media-worker } }
+  template:
+    metadata: { labels: { app: media-worker } }
+    spec:
+      containers:
+        - name: worker
+          image: tinyinsta/media-worker:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: media-worker }]

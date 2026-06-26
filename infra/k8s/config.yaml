@@ -1,0 +1,40 @@
+# Non-secret config shared by every app pod (envFrom). Service hostnames match
+# the Service names below, so the services' in-code defaults
+# (redis://redis:6379, mongodb://mongo:27017, …) resolve unchanged.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tinyinsta-config
+  namespace: tinyinsta
+data:
+  DJANGO_DEBUG: "false"
+  POSTGRES_USER: "tinyinsta"
+  POSTGRES_HOST: "postgres"
+  BUS_BOOTSTRAP_SERVERS: "redpanda:9092"
+  OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
+  # Issuer as seen by the browser — replace with the public Keycloak URL in a real cluster.
+  OIDC_ISSUER: "http://localhost:8080/realms/tinyinsta"
+  OIDC_AUDIENCE: ""
+  NEO4J_URI: "bolt://neo4j:7687"
+  NEO4J_USER: "neo4j"
+  MONGO_URI: "mongodb://mongo:27017"
+  S3_ENDPOINT: "http://minio:9000"
+  S3_BUCKET: "media"
+  S3_PUBLIC_URL: "http://localhost:9000"
+  S3_CDN_URL: "http://localhost/cdn"
+  USERTIMELINE_URL: "http://usertimeline-svc:8000"
+---
+# Example secret — DEV values. Replace before any real deployment (or generate
+# with `kubectl create secret generic tinyinsta-secrets ...`).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tinyinsta-secrets
+  namespace: tinyinsta
+type: Opaque
+stringData:
+  DJANGO_SECRET_KEY: "dev-insecure-change-me"
+  POSTGRES_PASSWORD: "tinyinsta"
+  NEO4J_PASSWORD: "tinyinsta"
+  S3_ACCESS_KEY: "minioadmin"
+  S3_SECRET_KEY: "minioadmin"

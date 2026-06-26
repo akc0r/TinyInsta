@@ -1,0 +1,251 @@
+# HTTP services. Each: Deployment (1 replica) + ClusterIP Service on :8000.
+# Images are the locally-built compose images (tinyinsta/<svc>) — load them into
+# the cluster first (see README), or override with `kustomize edit set image`.
+# Common env comes from the ConfigMap + Secret; SERVICE_NAME is per pod.
+#
+# This file defines user-svc, post-svc, usertimeline-svc, hometimeline-svc,
+# interaction-svc, stories-svc, media-svc, search-svc and realtime-svc following
+# one shared shape; only image, SERVICE_NAME and Service name differ.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: user-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: user-svc } }
+  template:
+    metadata: { labels: { app: user-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/user-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: user-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: user-svc, namespace: tinyinsta }
+spec:
+  selector: { app: user-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: post-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: post-svc } }
+  template:
+    metadata: { labels: { app: post-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/post-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: post-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: post-svc, namespace: tinyinsta }
+spec:
+  selector: { app: post-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: usertimeline-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: usertimeline-svc } }
+  template:
+    metadata: { labels: { app: usertimeline-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/usertimeline-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: usertimeline-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: usertimeline-svc, namespace: tinyinsta }
+spec:
+  selector: { app: usertimeline-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: hometimeline-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: hometimeline-svc } }
+  template:
+    metadata: { labels: { app: hometimeline-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/hometimeline-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: hometimeline-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: hometimeline-svc, namespace: tinyinsta }
+spec:
+  selector: { app: hometimeline-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: interaction-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: interaction-svc } }
+  template:
+    metadata: { labels: { app: interaction-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/interaction-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: interaction-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: interaction-svc, namespace: tinyinsta }
+spec:
+  selector: { app: interaction-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: stories-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: stories-svc } }
+  template:
+    metadata: { labels: { app: stories-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/stories-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: stories-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: stories-svc, namespace: tinyinsta }
+spec:
+  selector: { app: stories-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: media-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: media-svc } }
+  template:
+    metadata: { labels: { app: media-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/media-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: media-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: media-svc, namespace: tinyinsta }
+spec:
+  selector: { app: media-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: search-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: search-svc } }
+  template:
+    metadata: { labels: { app: search-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/search-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: search-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: search-svc, namespace: tinyinsta }
+spec:
+  selector: { app: search-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: realtime-svc, namespace: tinyinsta }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: realtime-svc } }
+  template:
+    metadata: { labels: { app: realtime-svc } }
+    spec:
+      containers:
+        - name: app
+          image: tinyinsta/realtime-svc:latest
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef: { name: tinyinsta-config }
+            - secretRef: { name: tinyinsta-secrets }
+          env: [{ name: SERVICE_NAME, value: realtime-svc }]
+          ports: [{ containerPort: 8000 }]
+          readinessProbe: { httpGet: { path: /health, port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: realtime-svc, namespace: tinyinsta }
+spec:
+  selector: { app: realtime-svc }
+  ports: [{ port: 8000, targetPort: 8000 }]
