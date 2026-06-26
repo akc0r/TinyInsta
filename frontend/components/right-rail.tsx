@@ -44,14 +44,19 @@ export function RightRail({ profile }: { profile: Profile | null }) {
             >
               <Avatar className="size-11">
                 {profile.avatar_url && (
-                  <AvatarImage src={profile.avatar_url} alt={profile.username} />
+                  <AvatarImage
+                    src={profile.avatar_url}
+                    alt={profile.username}
+                  />
                 )}
                 <AvatarFallback>
                   {profile.username.charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="min-w-0 flex-1">
-                <p className="truncate font-semibold hover:underline">{profile.username}</p>
+                <p className="truncate font-semibold hover:underline">
+                  {profile.username}
+                </p>
                 <p className="truncate text-muted-foreground">
                   {profile.name || profile.bio || "Welcome to TinyInsta"}
                 </p>
@@ -78,7 +83,9 @@ export function RightRail({ profile }: { profile: Profile | null }) {
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="font-semibold text-muted-foreground">Suggested for you</span>
+        <span className="font-semibold text-muted-foreground">
+          Suggested for you
+        </span>
         <button className="text-xs font-semibold">See All</button>
       </div>
       {suggestions === null ? (
@@ -107,7 +114,10 @@ export function RightRail({ profile }: { profile: Profile | null }) {
 
       <nav className="flex flex-wrap gap-x-2 gap-y-1 pt-4 text-xs text-muted-foreground/70">
         {FOOTER_LINKS.map((link) => (
-          <span key={link} className="after:content-['·'] after:ml-2 last:after:content-['']">
+          <span
+            key={link}
+            className="after:ml-2 after:content-['·'] last:after:content-['']"
+          >
             {link}
           </span>
         ))}
@@ -127,9 +137,13 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
     setPending(true)
     setFollowed(true)
     try {
-      const r = await apiFetch(`/users/${suggestion.user_id}/follow`, getToken(), {
-        method: "POST",
-      })
+      const r = await apiFetch(
+        `/users/${suggestion.user_id}/follow`,
+        getToken(),
+        {
+          method: "POST",
+        }
+      )
       if (!r.ok) throw new Error()
     } catch {
       setFollowed(false)
@@ -151,7 +165,10 @@ function SuggestionRow({ suggestion }: { suggestion: Suggestion }) {
       >
         <Avatar className="size-9">
           {suggestion.avatar_url && (
-            <AvatarImage src={suggestion.avatar_url} alt={suggestion.username} />
+            <AvatarImage
+              src={suggestion.avatar_url}
+              alt={suggestion.username}
+            />
           )}
           <AvatarFallback>
             {suggestion.username.charAt(0).toUpperCase()}

@@ -128,7 +128,9 @@ export default function UploadPage() {
         </Button>
         {status && (
           <p className="flex items-center gap-1 text-sm text-muted-foreground">
-            {status === "Done" && <IconCheck className="size-4 text-green-600" />}
+            {status === "Done" && (
+              <IconCheck className="size-4 text-green-600" />
+            )}
             {status}
           </p>
         )}

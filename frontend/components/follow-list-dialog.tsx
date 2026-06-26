@@ -51,7 +51,9 @@ export function FollowListDialog({
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent className="gap-0 p-0 sm:max-w-sm">
         <DialogHeader className="border-b px-4 py-3">
-          <DialogTitle className="text-center text-base">{LABELS[kind]}</DialogTitle>
+          <DialogTitle className="text-center text-base">
+            {LABELS[kind]}
+          </DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="max-h-[60vh]">
@@ -68,7 +70,9 @@ export function FollowListDialog({
               ))
             ) : users.length === 0 ? (
               <p className="px-2 py-10 text-center text-sm text-muted-foreground">
-                {kind === "followers" ? "No followers yet." : "Not following anyone yet."}
+                {kind === "followers"
+                  ? "No followers yet."
+                  : "Not following anyone yet."}
               </p>
             ) : (
               users.map((u) => (
@@ -79,13 +83,21 @@ export function FollowListDialog({
                   className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-accent"
                 >
                   <Avatar className="size-11">
-                    {u.avatar_url && <AvatarImage src={u.avatar_url} alt={u.username} />}
-                    <AvatarFallback>{u.username.charAt(0).toUpperCase()}</AvatarFallback>
+                    {u.avatar_url && (
+                      <AvatarImage src={u.avatar_url} alt={u.username} />
+                    )}
+                    <AvatarFallback>
+                      {u.username.charAt(0).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">{u.username}</p>
+                    <p className="truncate text-sm font-semibold">
+                      {u.username}
+                    </p>
                     {u.name && (
-                      <p className="truncate text-sm text-muted-foreground">{u.name}</p>
+                      <p className="truncate text-sm text-muted-foreground">
+                        {u.name}
+                      </p>
                     )}
                   </div>
                 </Link>

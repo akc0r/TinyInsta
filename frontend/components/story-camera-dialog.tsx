@@ -67,7 +67,7 @@ export function StoryCameraDialog({
         setError("Camera unavailable — pick a photo instead.")
       }
     },
-    [stopCamera],
+    [stopCamera]
   )
 
   // Drive the camera from the dialog's open state and the capture state.
@@ -126,7 +126,7 @@ export function StoryCameraDialog({
         if (blob) usePreview(blob)
       },
       "image/jpeg",
-      0.9,
+      0.9
     )
   }
 
@@ -191,8 +191,10 @@ export function StoryCameraDialog({
           {!captured && (
             <button
               type="button"
-              onClick={() => setFacing((f) => (f === "user" ? "environment" : "user"))}
-              className="absolute right-3 top-3 rounded-full bg-black/50 p-2 text-white"
+              onClick={() =>
+                setFacing((f) => (f === "user" ? "environment" : "user"))
+              }
+              className="absolute top-3 right-3 rounded-full bg-black/50 p-2 text-white"
               aria-label="Flip camera"
             >
               <IconRotateClockwise className="size-5" />
@@ -222,14 +224,26 @@ export function StoryCameraDialog({
                   : "text-muted-foreground"
               }`}
             >
-              <IconStar className={`size-4 ${closeFriends ? "fill-green-600" : ""}`} />
+              <IconStar
+                className={`size-4 ${closeFriends ? "fill-green-600" : ""}`}
+              />
               {closeFriends ? "Close friends only" : "Share to everyone"}
             </button>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={reset} disabled={busy}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={reset}
+                disabled={busy}
+              >
                 <IconX className="size-4" /> Retake
               </Button>
-              <Button type="button" className="flex-1" onClick={share} disabled={busy}>
+              <Button
+                type="button"
+                className="flex-1"
+                onClick={share}
+                disabled={busy}
+              >
                 {busy ? "Sharing…" : "Share to story"}
               </Button>
             </div>

@@ -1,9 +1,20 @@
 "use client"
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react"
 import { IconCheck } from "@tabler/icons-react"
 
-import { apiFetch, putToStorage, type Profile, type UploadTicket } from "@/lib/api"
+import {
+  apiFetch,
+  putToStorage,
+  type Profile,
+  type UploadTicket,
+} from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { AvatarCropper } from "@/components/avatar-cropper"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -231,7 +242,9 @@ export function EditProfileDialog({
           <DialogFooter className="items-center">
             {status && (
               <span className="mr-auto flex items-center gap-1 text-sm text-muted-foreground">
-                {status === "Saved" && <IconCheck className="size-4 text-green-600" />}
+                {status === "Saved" && (
+                  <IconCheck className="size-4 text-green-600" />
+                )}
                 {status}
               </span>
             )}

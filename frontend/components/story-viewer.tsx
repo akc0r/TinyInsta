@@ -23,7 +23,7 @@ function useMediaUrls() {
       cache.current.set(mediaId, url)
       return url
     },
-    [getToken],
+    [getToken]
   )
 }
 
@@ -91,9 +91,9 @@ export function StoryViewer({
   // recompute its unseen rings on close.
   useEffect(() => {
     if (!story) return
-    apiFetch(`/stories/${story.story_id}/view`, getToken(), { method: "POST" }).catch(
-      () => {},
-    )
+    apiFetch(`/stories/${story.story_id}/view`, getToken(), {
+      method: "POST",
+    }).catch(() => {})
     onViewed?.(groupIdx, storyIdx)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [story?.story_id])
@@ -134,7 +134,10 @@ export function StoryViewer({
         {/* Segmented progress bar, one segment per story in the group. */}
         <div className="absolute inset-x-0 top-0 z-20 flex gap-1 p-2">
           {group.stories.map((s, i) => (
-            <div key={s.story_id} className="h-0.5 flex-1 overflow-hidden rounded bg-white/30">
+            <div
+              key={s.story_id}
+              className="h-0.5 flex-1 overflow-hidden rounded bg-white/30"
+            >
               <div
                 className="h-full bg-white"
                 style={{
@@ -174,7 +177,11 @@ export function StoryViewer({
 
         {imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="story" className="size-full object-contain" />
+          <img
+            src={imageUrl}
+            alt="story"
+            className="size-full object-contain"
+          />
         ) : (
           <div className="flex size-full items-center justify-center text-white/60">
             Loading…

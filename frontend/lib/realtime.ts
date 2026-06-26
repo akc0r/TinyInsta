@@ -8,7 +8,14 @@ import { WS_URL } from "@/lib/api"
 export type RealtimeMessage =
   | { type: "post.liked"; post_id: string; count: number }
   | { type: "post.commented"; post_id: string; comment_id: string }
-  | { type: "notification"; id: string; notification_type: string; payload: Record<string, string>; read: boolean; created_at: string }
+  | {
+      type: "notification"
+      id: string
+      notification_type: string
+      payload: Record<string, string>
+      read: boolean
+      created_at: string
+    }
 
 type Handler = (msg: RealtimeMessage) => void
 

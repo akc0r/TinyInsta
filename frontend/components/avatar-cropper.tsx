@@ -35,10 +35,14 @@ export function AvatarCropper({
   const [img, setImg] = useState<HTMLImageElement | null>(null)
   const [zoom, setZoom] = useState(1)
   const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 })
-  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null)
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(
+    null
+  )
 
   // base scale so the image fully covers the viewport ("cover")
-  const baseScale = img ? Math.max(VIEWPORT / img.naturalWidth, VIEWPORT / img.naturalHeight) : 1
+  const baseScale = img
+    ? Math.max(VIEWPORT / img.naturalWidth, VIEWPORT / img.naturalHeight)
+    : 1
   const scale = baseScale * zoom
   const dispW = img ? img.naturalWidth * scale : 0
   const dispH = img ? img.naturalHeight * scale : 0
@@ -60,7 +64,10 @@ export function AvatarCropper({
     el.onload = () => {
       setImg(el)
       setZoom(1)
-      const s = Math.max(VIEWPORT / el.naturalWidth, VIEWPORT / el.naturalHeight)
+      const s = Math.max(
+        VIEWPORT / el.naturalWidth,
+        VIEWPORT / el.naturalHeight
+      )
       setOffset({
         x: (VIEWPORT - el.naturalWidth * s) / 2,
         y: (VIEWPORT - el.naturalHeight * s) / 2,
@@ -87,8 +94,8 @@ export function AvatarCropper({
           y: VIEWPORT / 2 - cy * nextScale,
         },
         img.naturalWidth * nextScale,
-        img.naturalHeight * nextScale,
-      ),
+        img.naturalHeight * nextScale
+      )
     )
   }
 
@@ -103,7 +110,7 @@ export function AvatarCropper({
       clamp({
         x: drag.current.ox + (e.clientX - drag.current.x),
         y: drag.current.oy + (e.clientY - drag.current.y),
-      }),
+      })
     )
   }
 
@@ -128,7 +135,7 @@ export function AvatarCropper({
         if (blob) onCropped(blob)
       },
       "image/jpeg",
-      0.9,
+      0.9
     )
   }
 
@@ -137,7 +144,9 @@ export function AvatarCropper({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Crop photo</DialogTitle>
-          <DialogDescription>Drag to reposition, zoom to fit.</DialogDescription>
+          <DialogDescription>
+            Drag to reposition, zoom to fit.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col items-center gap-4">

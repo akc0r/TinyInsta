@@ -48,7 +48,9 @@ function StoryBubble({
           </Avatar>
         </div>
       </div>
-      <span className="w-full truncate text-center text-xs">{profile.username}</span>
+      <span className="w-full truncate text-center text-xs">
+        {profile.username}
+      </span>
     </button>
   )
 }
@@ -75,8 +77,10 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
       const entries = await Promise.all(
         items.map(async (g) => {
           const r = await apiFetch(`/users/${g.author_id}`, token)
-          return r.ok ? ([g.author_id, (await r.json()) as Profile] as const) : null
-        }),
+          return r.ok
+            ? ([g.author_id, (await r.json()) as Profile] as const)
+            : null
+        })
       )
       setProfiles((prev) => {
         const next = { ...prev }
@@ -99,11 +103,13 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
   // ring greys out without a round-trip.
   function markGroupSeen(groupIdx: number) {
     setGroups((prev) =>
-      prev.map((g, i) => (i === groupIdx ? { ...g, has_unseen: false } : g)),
+      prev.map((g, i) => (i === groupIdx ? { ...g, has_unseen: false } : g))
     )
   }
 
-  const selfIdx = profile ? groups.findIndex((g) => g.author_id === profile.user_id) : -1
+  const selfIdx = profile
+    ? groups.findIndex((g) => g.author_id === profile.user_id)
+    : -1
   const otherGroups = groups
     .map((g, i) => ({ g, i }))
     .filter(({ i }) => i !== selfIdx)
@@ -128,7 +134,10 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
                   <div className="flex w-16 flex-col items-center gap-1">
                     <Avatar className="size-14">
                       {profile.avatar_url && (
-                        <AvatarImage src={profile.avatar_url} alt={profile.username} />
+                        <AvatarImage
+                          src={profile.avatar_url}
+                          alt={profile.username}
+                        />
                       )}
                       <AvatarFallback>
                         {profile.username.charAt(0).toUpperCase()}
@@ -142,7 +151,7 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
                     <button
                       type="button"
                       aria-label="Add to your story"
-                      className="absolute bottom-4 right-0 rounded-full border-2 border-background bg-primary p-0.5 text-primary-foreground"
+                      className="absolute right-0 bottom-4 rounded-full border-2 border-background bg-primary p-0.5 text-primary-foreground"
                     >
                       <IconPlus className="size-3.5" />
                     </button>
@@ -150,7 +159,9 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
                 />
               </div>
               {selfIdx < 0 && (
-                <span className="w-full truncate text-center text-xs">Your story</span>
+                <span className="w-full truncate text-center text-xs">
+                  Your story
+                </span>
               )}
             </div>
           ) : (
@@ -162,7 +173,10 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
 
           {loading
             ? Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="flex w-16 shrink-0 flex-col items-center gap-1">
+                <div
+                  key={i}
+                  className="flex w-16 shrink-0 flex-col items-center gap-1"
+                >
                   <Skeleton className="size-14 rounded-full" />
                   <Skeleton className="h-3 w-12" />
                 </div>

@@ -16,7 +16,7 @@ export default function HomePage() {
   const { ready, authenticated, getToken, login } = useAuth()
   const [profile, setProfile] = useState<Profile | null>(null)
   const { cells, loading, done, error, loadMore } = useHomeTimeline(
-    ready && authenticated,
+    ready && authenticated
   )
   const sentinel = useInfiniteScroll(loadMore)
 

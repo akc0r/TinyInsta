@@ -23,7 +23,10 @@ function summary(n: Notification, actor: string): string {
 }
 
 function timeAgo(iso: string): string {
-  const s = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  const s = Math.max(
+    1,
+    Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  )
   if (s < 60) return `${s}s`
   if (s < 3600) return `${Math.floor(s / 60)}m`
   if (s < 86400) return `${Math.floor(s / 3600)}h`
@@ -37,14 +40,16 @@ export default function NotificationsPage() {
 
   // Resolve actor ids to usernames/avatars (cached across renders).
   useEffect(() => {
-    const ids = [...new Set(items.map((n) => n.payload.actor_id).filter(Boolean))]
+    const ids = [
+      ...new Set(items.map((n) => n.payload.actor_id).filter(Boolean)),
+    ]
     const missing = ids.filter((id) => !names.has(id))
     if (missing.length === 0) return
     Promise.all(
       missing.map(async (id) => {
         const r = await apiFetch(`/users/${id}`, getToken())
         return r.ok ? ((await r.json()) as Profile) : null
-      }),
+      })
     ).then((profiles) => {
       setNames((prev) => {
         const next = new Map(prev)
@@ -58,7 +63,9 @@ export default function NotificationsPage() {
   if (ready && !authenticated) {
     return (
       <div className="mx-auto max-w-sm space-y-3 px-4 py-16 text-center">
-        <p className="text-sm text-muted-foreground">Log in to see notifications.</p>
+        <p className="text-sm text-muted-foreground">
+          Log in to see notifications.
+        </p>
         <Button onClick={login}>Log in</Button>
       </div>
     )
@@ -75,7 +82,8 @@ export default function NotificationsPage() {
       <ul className="divide-y">
         {items.map((n) => {
           const actor = names.get(n.payload.actor_id)
-          const actorName = actor?.username ?? n.payload.actor_id?.slice(0, 8) ?? "Someone"
+          const actorName =
+            actor?.username ?? n.payload.actor_id?.slice(0, 8) ?? "Someone"
           return (
             <li
               key={n.id}
@@ -89,7 +97,9 @@ export default function NotificationsPage() {
                   {actor?.avatar_url && (
                     <AvatarImage src={actor.avatar_url} alt={actorName} />
                   )}
-                  <AvatarFallback>{actorName.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarFallback>
+                    {actorName.charAt(0).toUpperCase()}
+                  </AvatarFallback>
                 </Avatar>
               </Link>
               <p className="flex-1 text-sm">{summary(n, actorName)}</p>

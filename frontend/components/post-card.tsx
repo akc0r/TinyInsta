@@ -11,7 +11,13 @@ import {
   IconSend,
 } from "@tabler/icons-react"
 
-import { apiFetch, type Comment, type LikeStatus, type Post, type Profile } from "@/lib/api"
+import {
+  apiFetch,
+  type Comment,
+  type LikeStatus,
+  type Post,
+  type Profile,
+} from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { usePostRealtime } from "@/lib/use-realtime"
 import { cn } from "@/lib/utils"
@@ -29,7 +35,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 
 function timeAgo(iso: string): string {
-  const s = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  const s = Math.max(
+    1,
+    Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  )
   if (s < 60) return `${s}s`
   if (s < 3600) return `${Math.floor(s / 60)}m`
   if (s < 86400) return `${Math.floor(s / 3600)}h`
@@ -43,7 +52,10 @@ function timeAgo(iso: string): string {
 const usernameCache = new Map<string, string>()
 const inflight = new Map<string, Promise<string>>()
 
-async function resolveUsername(authorId: string, token: string | undefined): Promise<string> {
+async function resolveUsername(
+  authorId: string,
+  token: string | undefined
+): Promise<string> {
   const cached = usernameCache.get(authorId)
   if (cached) return cached
 
@@ -72,10 +84,15 @@ function useIsMobile() {
   const [mobile, setMobile] = useState(false)
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 639px)")
-    const handler = (e: MediaQueryListEvent | MediaQueryList) => setMobile(e.matches)
+    const handler = (e: MediaQueryListEvent | MediaQueryList) =>
+      setMobile(e.matches)
     handler(mq)
     mq.addEventListener("change", handler as (e: MediaQueryListEvent) => void)
-    return () => mq.removeEventListener("change", handler as (e: MediaQueryListEvent) => void)
+    return () =>
+      mq.removeEventListener(
+        "change",
+        handler as (e: MediaQueryListEvent) => void
+      )
   }, [])
   return mobile
 }
@@ -92,7 +109,12 @@ export type PostCardProps = {
   authorAvatar?: string
 }
 
-export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardProps) {
+export function PostCard({
+  post,
+  imageUrl,
+  authorName,
+  authorAvatar,
+}: PostCardProps) {
   const { getToken } = useAuth()
   const isMobile = useIsMobile()
   const [liked, setLiked] = useState(false)
@@ -127,10 +149,10 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
         items.map(async (c) => ({
           ...c,
           authorName: await resolveUsername(c.author_id, token),
-        })),
+        }))
       )
     },
-    [getToken],
+    [getToken]
   )
 
   const loadComments = useCallback(async () => {
@@ -160,7 +182,7 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
       const res = await apiFetch(
         `/interactions/posts/${post.post_id}/like`,
         getToken(),
-        { method: next ? "POST" : "DELETE" },
+        { method: next ? "POST" : "DELETE" }
       )
       if (res.ok) {
         const data: LikeStatus = await res.json()
@@ -189,7 +211,7 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
       const res = await apiFetch(
         `/posts/${post.post_id}/comments`,
         getToken(),
-        { method: "POST", body: JSON.stringify({ body }) },
+        { method: "POST", body: JSON.stringify({ body }) }
       )
       if (res.ok) {
         const comment: Comment = await res.json()
@@ -208,7 +230,9 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
   // Caption: show only first line, with "more" to expand.
   // -----------------------------------------------------------------------
   const firstLine = post.caption?.split("\n")[0] ?? ""
-  const hasMore = post.caption ? post.caption.includes("\n") || post.caption.length > 120 : false
+  const hasMore = post.caption
+    ? post.caption.includes("\n") || post.caption.length > 120
+    : false
 
   // -----------------------------------------------------------------------
   // Comment list + input (shared between inline and drawer).
@@ -228,7 +252,7 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
           </p>
         ))}
         {comments.length === 0 && (
-          <p className="text-xs text-muted-foreground py-2">No comments yet.</p>
+          <p className="py-2 text-xs text-muted-foreground">No comments yet.</p>
         )}
       </div>
 
@@ -260,10 +284,14 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
           className="flex items-center gap-3"
         >
           <Avatar className="size-8">
-            {authorAvatar && <AvatarImage src={authorAvatar} alt={authorName} />}
+            {authorAvatar && (
+              <AvatarImage src={authorAvatar} alt={authorName} />
+            )}
             <AvatarFallback>{initial}</AvatarFallback>
           </Avatar>
-          <span className="text-sm font-semibold hover:underline">{authorName}</span>
+          <span className="text-sm font-semibold hover:underline">
+            {authorName}
+          </span>
         </Link>
         <span className="text-sm text-muted-foreground">
           • {timeAgo(post.created_at)}
@@ -309,7 +337,12 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
         <Button variant="ghost" size="icon" aria-label="Share">
           <IconSend className="size-6" stroke={1.8} />
         </Button>
-        <Button variant="ghost" size="icon" className="ml-auto" aria-label="Save">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="ml-auto"
+          aria-label="Save"
+        >
           <IconBookmark className="size-6" stroke={1.8} />
         </Button>
       </div>
@@ -330,7 +363,11 @@ export function PostCard({ post, imageUrl, authorName, authorAvatar }: PostCardP
               <span className="whitespace-pre-line">{post.caption}</span>
             ) : (
               <>
-                <span>{firstLine.length > 120 ? firstLine.slice(0, 120) + "…" : firstLine}</span>
+                <span>
+                  {firstLine.length > 120
+                    ? firstLine.slice(0, 120) + "…"
+                    : firstLine}
+                </span>
                 {hasMore && (
                   <button
                     type="button"

@@ -1,6 +1,12 @@
 "use client"
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react"
 import type Keycloak from "keycloak-js"
 
 import { initKeycloak } from "@/lib/keycloak"

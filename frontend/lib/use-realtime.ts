@@ -54,7 +54,8 @@ export function useNotifications(enabled: boolean) {
       if (msg.type !== "notification") return
       const note: Notification = {
         id: msg.id,
-        notification_type: msg.notification_type as Notification["notification_type"],
+        notification_type:
+          msg.notification_type as Notification["notification_type"],
         payload: msg.payload,
         read: msg.read,
         created_at: msg.created_at,
@@ -68,9 +69,11 @@ export function useNotifications(enabled: boolean) {
 
   const markRead = (id: string) => {
     apiFetch(`/notifications/${id}/read`, getToken(), { method: "POST" }).catch(
-      () => {},
+      () => {}
     )
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)))
+    setItems((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+    )
     setUnread((n) => Math.max(0, n - 1))
   }
 
