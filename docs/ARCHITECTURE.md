@@ -2,12 +2,12 @@
 
 ## Context & goals
 
-TinyInsta is an Instagram-like clone built as a **realistic distributed system**. The goal is not scale (we are not targeting two billion users) but **mastery of the patterns**: decomposition into microservices, event-driven communication, polyglot persistence, CQRS, and solving the feed-generation problem.
+TinyInsta is an Instagram-like clone built as a **realistic distributed system**. The goal is not scale (it does not target two billion users) but a faithful demonstration of the **patterns**: decomposition into microservices, event-driven communication, polyglot persistence, CQRS, and solving the feed-generation problem.
 
-Shaping constraints:
-- **Solo dev** → a phased roadmap, one demonstrable deliverable per phase (anti-burnout).
-- **Backend in Django only** → a single backend learning curve; the complexity comes from the architecture and the datastores, not from the number of languages.
-- **Frontend in Next.js** → comfort zone, so the frontend steps aside and lets the backend be the star.
+Design constraints:
+- **Incremental delivery** → the system was built in increments, each adding one demonstrable end-to-end capability and one datastore at a time.
+- **Single backend language (Django)** → complexity is concentrated in the architecture and the datastores, not in a proliferation of runtimes.
+- **Frontend in Next.js** → a focused PWA client; the architectural weight sits in the backend.
 
 ## Overview
 
@@ -125,20 +125,20 @@ Keycloak (OIDC) is the identity authority. Flow:
 2. The JWT is sent in `Authorization: Bearer` to Traefik.
 3. Each service validates the signature against Keycloak's **JWKS** via the shared `libs/auth_jwt` library.
 
-Later option: centralize validation at Traefik (forward-auth). We start at service level to learn JWT validation.
+Validation happens at the service level (each service trusts only Keycloak's JWKS); centralizing it at Traefik via forward-auth is a possible future refinement.
 
 ## Key decisions & trade-offs
 
 | Decision | Choice | Trade-off |
 |---|---|---|
-| Backend language | Django only | Simplicity > polyglot; complexity reserved for the architecture & data. (Java possible later via a service swap.) |
-| Bus | Redpanda (Kafka API) | Same API/clients as Kafka, one binary instead of a JVM cluster. |
+| Backend language | Django only | Simplicity over polyglot runtimes; complexity is reserved for the architecture and the data stores. (A Java/Spring service swap remains possible.) |
+| Bus | Redpanda (Kafka API) | Same API and clients as Kafka, one binary instead of a JVM cluster. |
 | Data | Polyglot persistence | Each store for its strength — see [DATA-STORES.md](DATA-STORES.md). |
 | A service's data | Dedicated schema/instance | No coupling through the database; integration only via API/events. |
-| Timelines | Split home / user, fan-out on write + Redis | The canonical Twitter split; the user timeline is the read building block for the home timeline in hybrid mode. Fast reads; write cost handled later with the hybrid mode. |
+| Timelines | Split home / user, fan-out on write + Redis | The canonical Twitter split; the user timeline is the read building block for the home timeline in hybrid mode. Fast reads, with write cost on hot accounts absorbed by the hybrid path. |
 | Pagination | Keyset cursor | Stable and performant under load, unlike OFFSET. |
 | Event delivery | At-least-once + idempotency | "Exactly-once" does not exist in distributed systems. |
-| Frontend | Next.js | Velocity (comfort); the backend is the star. |
+| Frontend | Next.js | A focused PWA client, keeping the architectural weight in the backend. |
 
 ## Out of scope (by design)
 

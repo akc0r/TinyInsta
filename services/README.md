@@ -1,7 +1,8 @@
 # services/
 
 One directory per **bounded context**. All HTTP services share the same structure
-(consistent boilerplate); the business logic is left to implement (marked `# TODO`).
+(consistent boilerplate built on `libs/tinyinsta`) and are fully implemented:
+DRF endpoints, store access, and bus workers.
 
 | Service | Store(s) | Emits | Consumes |
 |---|---|---|---|
@@ -26,7 +27,7 @@ One directory per **bounded context**. All HTTP services share the same structur
 ├── config/               # Django project: settings (extends tinyinsta.service), urls, asgi, wsgi
 └── <app>/                # bounded context
     ├── models.py         # (when a relational store is used)
-    ├── views.py          # DRF endpoints (skeleton)
+    ├── views.py          # DRF endpoints
     ├── urls.py
     ├── store.py / mongo.py / index.py / ...   # store access
     └── management/commands/consume.py         # bus worker (when the service consumes)

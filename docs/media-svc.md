@@ -72,4 +72,4 @@ sequenceDiagram
 ## Notes
 - The upload **does not transit through the backend** (presigned URL) → no large payloads in the services.
 - Because processing is asynchronous, the post can be created immediately with the media in `pending`, with variants arriving later.
-- *(History: a C++ version of the worker was considered for the CPU-bound transcode — deferred; Python + ffmpeg is sufficient, and it is the most easily replaceable piece later.)*
+- The worker is Python + ffmpeg. The transcode is CPU-bound and the worker is the most easily replaceable piece (a native implementation could be swapped in behind the same `media.uploaded` → `media.processed` contract).

@@ -63,6 +63,6 @@ TinyInsta uses **five databases + one object store**, each chosen for what it do
 - TTL keys for the story bar (native 24h expiry).
 - Pub/sub as the Django Channels channel layer (WebSocket).
 
-## Introduction cadence (anti-burnout)
+## Incremental startup
 
-The six stores are **not** turned on day one. They arrive one at a time, gated by Docker Compose profiles — see [ROADMAP.md](ROADMAP.md).
+The six stores need not all run at once. Each is gated by a Docker Compose profile, so an environment can bring up only the stores it needs — `make infra` for the baseline, additional profiles (`mongo`, `minio`, `neo4j`, `search`) on top.

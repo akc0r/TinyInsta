@@ -8,6 +8,11 @@
 
 <br/>
 
+[![CI](https://github.com/akc0r/TinyInsta/actions/workflows/ci.yml/badge.svg)](https://github.com/akc0r/TinyInsta/actions/workflows/ci.yml)
+![License](https://img.shields.io/github/license/akc0r/TinyInsta)
+
+<br/>
+
 ![Django](https://img.shields.io/badge/Django-DRF-092E20?logo=django&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-React-000000?logo=nextdotjs&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-relational-4169E1?logo=postgresql&logoColor=white)
@@ -25,16 +30,17 @@
 ---
 
 > **The pitch.** TinyInsta is not "yet another Instagram clone". It is a playground to build — and demonstrate — an **event-driven microservices** architecture with **polyglot persistence**: each database is chosen for what it does best, and services communicate through asynchronous events rather than direct coupling.
->
-> *Codename "TinyInsta" — rename freely.*
+
+> **Status — feature complete.** All planned capabilities are delivered: 9 Django microservices over 6 datastores, a Next.js PWA, an asynchronous media pipeline, real-time WebSocket, search & explore, an observability stack, a Kubernetes overlay, and CI. The optional Capacitor mobile build and the Java/Spring service swap are intentionally out of scope.
 
 ## ✨ What makes this project interesting
 
-- **Event-driven microservices** — decoupled Django services communicating over a Kafka-style bus (Redpanda). No fragile direct calls: events.
-- **Polyglot persistence** — Postgres (integrity), MongoDB (documents), **Neo4j (social graph)**, Elasticsearch (search), Redis (feed & real-time). The right tool for each problem.
+- **Event-driven microservices** — 9 decoupled Django services communicating over a Kafka-style bus (Redpanda). No fragile direct calls: events.
+- **Polyglot persistence** — Postgres (integrity), MongoDB (documents), **Neo4j (social graph)**, Elasticsearch (search), Redis (feed & real-time), MinIO (blobs). The right tool for each problem.
 - **Deliberate CQRS** — the feed (Redis) and the search index (Elasticsearch) are rebuildable *read models* derived from events. System of record ≠ read views.
-- **The feed problem, for real** — fan-out on write, Redis cache, cursor pagination, and handling the "celebrity problem".
+- **The feed problem, for real** — fan-out on write, Redis cache, cursor pagination, and the **hybrid fan-out** that solves the celebrity / hot-user problem at read time.
 - **Real-time** — likes, counters, and stories propagating live over WebSocket.
+- **Production-minded ops** — correlated JSON logs (`correlation_id` across HTTP + bus), Prometheus/Grafana + Filebeat/Kibana dashboards, Traefik rate limiting, a caching CDN in front of MinIO, a Kubernetes (kustomize) overlay, and a GitHub Actions CI pipeline.
 
 ## 🏗️ Architecture at a glance
 
@@ -88,14 +94,16 @@ flowchart TD
 
 | Layer | Choice | Detail |
 |---|---|---|
-| Frontend | **Next.js (React)** | PWA, web camera, infinite scroll, WebSocket client — *([Angular alternative](docs/FRONTEND.md))* |
+| Frontend | **Next.js 16 / React 19** | PWA: web camera, infinite scroll, WebSocket client — *([details](docs/FRONTEND.md))* |
 | Backend | **Django / DRF** | One service per bounded context |
 | Auth | **Keycloak** | OIDC, JWTs validated by services (JWKS) |
 | Bus | **Redpanda** | Kafka API, one binary |
 | Gateway | **Traefik** | Routing, TLS, rate-limit, forward-auth |
-| Storage | **MinIO** | S3-compatible, upload via presigned URL |
+| Storage | **MinIO** | S3-compatible, upload via presigned URL, reads served through a caching CDN |
 | Data | **Postgres · MongoDB · Neo4j · Elasticsearch · Redis** | [Why each →](docs/DATA-STORES.md) |
-| Orchestration | **Docker Compose** | Everything local; K8s considered at the end |
+| Observability | **Prometheus · Grafana · Filebeat · Kibana** | Metrics + correlated JSON logs (`correlation_id` across HTTP & bus) |
+| Orchestration | **Docker Compose · Kubernetes** | Compose for local; a kustomize overlay mirrors the same topology |
+| CI | **GitHub Actions** | Lint (ruff + frontend) and a matrix build of every service image |
 
 ## 📁 Repository layout
 
@@ -131,7 +139,7 @@ make front          # cd frontend && pnpm install && pnpm dev
 
 Then: frontend on `http://localhost:3000`, API via Traefik on `http://localhost/api`, Keycloak console on `http://localhost:8080`, MinIO console on `http://localhost:9001`, Traefik dashboard on `http://localhost:8090`.
 
-> ⚙️ Datastores come online **incrementally** through the phases (see roadmap) — you don't light up all six on day one. Docker Compose **profiles** let you start subsets (`make infra`, or `docker compose --profile infra --profile mongo up -d`).
+> ⚙️ Datastores are gated by Docker Compose **profiles**, so you can bring up subsets rather than all six at once (`make infra`, or `docker compose --profile infra --profile mongo up -d`).
 
 ## 📚 Documentation
 
@@ -140,34 +148,33 @@ Then: frontend on `http://localhost:3000`, API via Traefik on `http://localhost/
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Overview, sync/async flows, CQRS, fan-out, decisions |
 | [DATA-STORES.md](docs/DATA-STORES.md) | Polyglot persistence: why each database |
 | [EVENTS.md](docs/EVENTS.md) | Bus contract: catalog, envelope, conventions |
-| [ROADMAP.md](docs/ROADMAP.md) | Phased roadmap, one demonstrable deliverable per phase |
 | [FRONTEND.md](docs/FRONTEND.md) | Frontend stack, camera flow, real-time, auth |
 | [services/](services/README.md) | One spec file per microservice |
 
-## 🗺️ Roadmap (summary)
+## ✅ Capabilities
 
-| Phase | Demonstrable deliverable |
+The system was built in deliberate increments, each adding one end-to-end capability. All are delivered:
+
+| Capability | What it demonstrates |
 |---|---|
-| 0 · Foundations | Frontend → `/api/health` via Traefik, Keycloak up |
-| 1 · Auth + Profiles | OIDC login, profile editing |
-| 2 · Posts + Upload | Upload a photo → visible on the profile |
-| 3 · Social graph | Follow + "friends of friends" suggestions (Neo4j) |
-| **4 · Home timeline + fan-out** | **MVP: follow → post → home feed, infinite scroll** ⭐ |
-| 5 · Live interactions | Like → live counter on another device |
-| 6 · Stories | Story from the camera, expires after 24h |
-| 7 · Search | User/hashtag search + explore page (Elasticsearch) |
-| 8 · Async media | Video → thumbnail + 720p transcode automatically |
-| 9 · Notifications + observability | Notification center + dashboards |
-| 10 · Scale & ops *(optional)* | Hybrid fan-out, K8s, CI/CD |
+| Foundations | Frontend → `/api/health` through Traefik, Keycloak up |
+| Auth + Profiles | OIDC login, profile editing |
+| Posts + Upload | Upload a photo → visible on the profile |
+| Social graph | Follow + "friends of friends" suggestions (Neo4j) |
+| **Home timeline + fan-out** ⭐ | Follow → post → home feed, infinite scroll |
+| Live interactions | Like → live counter on another device |
+| Stories | Story from the camera, expires after 24h |
+| Search & explore | User/hashtag search + explore page (Elasticsearch) |
+| Async media | Video → thumbnail + 720p transcode automatically |
+| Notifications + observability | Notification center + metrics/logs dashboards |
+| Scale & ops | Hybrid fan-out for celebrities, Kubernetes overlay, CDN, CI |
 
-➡️ Detail: **[docs/ROADMAP.md](docs/ROADMAP.md)**
+## 🎯 Scope
 
-## 🎯 Conscious scope
-
-TinyInsta reproduces the **architecture and patterns** of a large social network, **not its scale**: no multi-region, no edge CDN, no geographic sharding, no two billion users. This choice is deliberate and documented — telling *design* apart from *scaling* is part of the point.
+TinyInsta reproduces the **architecture and patterns** of a large social network, **not its scale**: no multi-region, no edge CDN, no geographic sharding, no two billion users. This separation is deliberate — distinguishing *design* from *scaling* is part of the point.
 
 ---
 
 <div align="center">
-<sub>Built as a distributed-architecture learning project — README-driven.</sub>
+<sub>Built as a distributed-architecture project — design over scale, patterns over product.</sub>
 </div>
