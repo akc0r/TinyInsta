@@ -7,3 +7,13 @@ http:
       stripPrefix:
         prefixes:
           - "/api"
+    cdnstrip:
+      stripPrefix:
+        prefixes:
+          - "/cdn"
+    # Per-client (source IP) rate limit at the gateway — protects every service
+    # without any application code. Referenced by routers as `ratelimit@file`.
+    ratelimit:
+      rateLimit:
+        average: 50      # sustained requests/second per client
+        burst: 100       # short spikes tolerated above the average

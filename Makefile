@@ -29,13 +29,21 @@ ps: ## Show container status
 logs: ## Tail logs (use SVC=user-svc to target a service)
 	$(COMPOSE) logs -f $(SVC)
 
+.PHONY: observability
+observability: ## Start Prometheus+Grafana and Filebeat+Kibana (needs `search` for ES)
+	$(COMPOSE) --profile search --profile observability up -d
+
+.PHONY: seed
+seed: ## Seed 10k users + 1 celebrity (publishes events; consumers converge). ARGS=...
+	$(COMPOSE) exec user-svc python manage.py seed $(ARGS)
+
 .PHONY: down
 down: ## Stop everything
-	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile apps down
+	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile observability --profile apps down
 
 .PHONY: clean
 clean: ## Stop everything AND remove volumes (destroys data)
-	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile apps down -v
+	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile observability --profile apps down -v
 
 # --- Validation -------------------------------------------------------------
 .PHONY: config

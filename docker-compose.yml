@@ -150,6 +150,21 @@ services:
     volumes:
       - minio-data:/data
 
+  # Caching CDN in front of MinIO for media reads. Routed by Traefik on /cdn;
+  # media-svc/worker hand out read URLs through it (S3_CDN_URL). Uploads bypass it.
+  nginx-cdn:
+    image: nginx:1.27-alpine
+    profiles: ["minio"]
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.cdn.rule=PathPrefix(`/cdn`)"
+      - "traefik.http.routers.cdn.middlewares=cdnstrip@file,ratelimit@file"
+      - "traefik.http.services.cdn.loadbalancer.server.port=80"
+    depends_on:
+      - minio
+
   neo4j:
     image: neo4j:5
     profiles: ["neo4j"]
@@ -184,6 +199,56 @@ services:
       - redpanda
 
   # ===========================================================================
+  # OBSERVABILITY (profile: observability)
+  #   Prometheus + Grafana for metrics; Filebeat + Kibana for the JSON logs.
+  #   Kibana reuses the `search` Elasticsearch — start it alongside:
+  #     docker compose --profile search --profile observability up -d
+  # ===========================================================================
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./infra/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.15.0
+    profiles: ["observability"]
+    user: root
+    command: ["filebeat", "-e", "-strict.perms=false"]
+    volumes:
+      - ./infra/observability/filebeat/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    profiles: ["observability"]
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+    ports:
+      - "5601:5601"
+
+  # ===========================================================================
   # APPLICATION SERVICES (profile: apps, + one profile per service)
   # ===========================================================================
   user-svc:
@@ -199,7 +264,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.users.rule=PathPrefix(`/api/users`)"
-      - "traefik.http.routers.users.middlewares=apistrip@file"
+      - "traefik.http.routers.users.middlewares=apistrip@file,ratelimit@file"
 
   post-svc:
     build: { <<: *svc-build, dockerfile: services/post-svc/Dockerfile }
@@ -212,7 +277,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.posts.rule=PathPrefix(`/api/posts`)"
-      - "traefik.http.routers.posts.middlewares=apistrip@file"
+      - "traefik.http.routers.posts.middlewares=apistrip@file,ratelimit@file"
   post-worker:
     image: tinyinsta/post-svc
     profiles: ["apps", "post-svc"]
@@ -233,7 +298,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.usertimeline.rule=PathPrefix(`/api/usertimeline`)"
-      - "traefik.http.routers.usertimeline.middlewares=apistrip@file"
+      - "traefik.http.routers.usertimeline.middlewares=apistrip@file,ratelimit@file"
   usertimeline-worker:
     image: tinyinsta/usertimeline-svc
     profiles: ["apps", "usertimeline-svc"]
@@ -254,7 +319,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.home.rule=PathPrefix(`/api/home`)"
-      - "traefik.http.routers.home.middlewares=apistrip@file"
+      - "traefik.http.routers.home.middlewares=apistrip@file,ratelimit@file"
   hometimeline-worker:
     image: tinyinsta/hometimeline-svc
     profiles: ["apps", "hometimeline-svc"]
@@ -275,7 +340,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.interactions.rule=PathPrefix(`/api/interactions`)"
-      - "traefik.http.routers.interactions.middlewares=apistrip@file"
+      - "traefik.http.routers.interactions.middlewares=apistrip@file,ratelimit@file"
 
   stories-svc:
     build: { <<: *svc-build, dockerfile: services/stories-svc/Dockerfile }
@@ -287,7 +352,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.stories.rule=PathPrefix(`/api/stories`)"
-      - "traefik.http.routers.stories.middlewares=apistrip@file"
+      - "traefik.http.routers.stories.middlewares=apistrip@file,ratelimit@file"
   stories-worker:
     image: tinyinsta/stories-svc
     profiles: ["apps", "stories-svc"]
@@ -311,10 +376,11 @@ services:
       S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
       S3_BUCKET: "${S3_BUCKET:-media}"
       S3_PUBLIC_URL: "${S3_PUBLIC_URL:-http://localhost:9000}"
+      S3_CDN_URL: "${S3_CDN_URL:-http://localhost/cdn}"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.media.rule=PathPrefix(`/api/media`)"
-      - "traefik.http.routers.media.middlewares=apistrip@file"
+      - "traefik.http.routers.media.middlewares=apistrip@file,ratelimit@file"
 
   media-worker:
     build: { <<: *svc-build, dockerfile: services/media-worker/Dockerfile }
@@ -330,6 +396,7 @@ services:
       S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
       S3_BUCKET: "${S3_BUCKET:-media}"
       S3_PUBLIC_URL: "${S3_PUBLIC_URL:-http://localhost:9000}"
+      S3_CDN_URL: "${S3_CDN_URL:-http://localhost/cdn}"
 
   search-svc:
     build: { <<: *svc-build, dockerfile: services/search-svc/Dockerfile }
@@ -342,7 +409,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.search.rule=PathPrefix(`/api/search`) || PathPrefix(`/api/explore`) || PathPrefix(`/api/hashtags`)"
-      - "traefik.http.routers.search.middlewares=apistrip@file"
+      - "traefik.http.routers.search.middlewares=apistrip@file,ratelimit@file"
   search-worker:
     image: tinyinsta/search-svc
     profiles: ["apps", "search-svc"]
@@ -364,7 +431,7 @@ services:
       - "traefik.enable=true"
       # Notifications REST (/api prefix stripped)
       - "traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`)"
-      - "traefik.http.routers.notifications.middlewares=apistrip@file"
+      - "traefik.http.routers.notifications.middlewares=apistrip@file,ratelimit@file"
       - "traefik.http.routers.notifications.service=realtime-svc"
       # WebSocket (no strip)
       - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
@@ -387,3 +454,4 @@ volumes:
   minio-data:
   neo4j-data:
   es-data:
+  grafana-data:

@@ -1,0 +1,36 @@
+# Filebeat ships container stdout to Elasticsearch. Our services log one JSON
+# object per line (see tinyinsta.observability.logging), so we decode that JSON
+# and the fields — including service + correlation_id — become searchable in
+# Kibana. Only TinyInsta containers are tailed (hint-based autodiscover).
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: true
+      templates:
+        - condition:
+            contains:
+              docker.container.labels.com.docker.compose.project: tinyinsta
+          config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+
+processors:
+  - add_docker_metadata: ~
+  # Lift the JSON log body to top-level fields; keep the raw line on failure.
+  - decode_json_fields:
+      fields: ["message"]
+      target: ""
+      overwrite_keys: true
+      add_error_key: true
+
+output.elasticsearch:
+  hosts: ["http://elasticsearch:9200"]
+  index: "tinyinsta-logs-%{+yyyy.MM.dd}"
+
+setup.template.name: "tinyinsta-logs"
+setup.template.pattern: "tinyinsta-logs-*"
+# We manage our own index naming; disable the default ILM-managed data stream.
+setup.ilm.enabled: false
+
+logging.level: warning
