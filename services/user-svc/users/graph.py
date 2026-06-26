@@ -31,6 +31,25 @@ def ensure_user(user_id: str) -> None:
     _run("MERGE (:User {user_id: $user_id})", user_id=user_id)
 
 
+def bulk_ensure_users(user_ids: list[str]) -> None:
+    """Create many User nodes in one round-trip (used by the seed command)."""
+    _run("UNWIND $ids AS id MERGE (:User {user_id: id})", ids=user_ids)
+
+
+def bulk_follow(edges: list[tuple[str, str]]) -> None:
+    """Create many FOLLOWS edges in one round-trip (used by the seed command)."""
+    _run(
+        """
+        UNWIND $edges AS e
+        MERGE (a:User {user_id: e[0]})
+        MERGE (b:User {user_id: e[1]})
+        MERGE (a)-[r:FOLLOWS]->(b)
+          ON CREATE SET r.since = datetime()
+        """,
+        edges=[list(e) for e in edges],
+    )
+
+
 def follow(follower_id: str, followee_id: str) -> None:
     _run(
         """
