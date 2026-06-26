@@ -78,6 +78,8 @@ export function StoryViewer({
   useEffect(() => {
     if (!story) return
     let active = true
+    // Drop the previous image immediately so stories never bleed across slides.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setImageUrl(null)
     resolveMedia(story.media_id).then((url) => {
       if (active) setImageUrl(url)
@@ -101,6 +103,8 @@ export function StoryViewer({
   // Auto-advance timer with a progress bar, reset on each story.
   useEffect(() => {
     if (!story || !imageUrl) return
+    // Restart the progress bar from zero for each story.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setProgress(0)
     const start = Date.now()
     const id = setInterval(() => {

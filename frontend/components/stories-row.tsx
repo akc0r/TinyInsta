@@ -96,6 +96,8 @@ export function StoriesRow({ profile }: { profile: Profile | null }) {
   }, [ready, authenticated, getToken])
 
   useEffect(() => {
+    // load() is memoized; it sets the loading state to kick off the fetch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     load()
   }, [load])
 

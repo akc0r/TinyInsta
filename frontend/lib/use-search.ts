@@ -18,6 +18,8 @@ export function usePostHits(path: string | null, enabled: boolean) {
   useEffect(() => {
     if (!enabled || !path) return
     let cancelled = false
+    // Enter the loading state for the new path before the async fetch resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setError("")
     ;(async () => {
@@ -58,6 +60,8 @@ export function useSearch(query: string, enabled: boolean) {
   useEffect(() => {
     const q = query.trim()
     if (!enabled || !q) {
+      // Empty query clears results synchronously without touching the API.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setResults({ users: [], posts: [] })
       setLoading(false)
       return

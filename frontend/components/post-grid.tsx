@@ -40,8 +40,12 @@ export function PostGrid({ cells }: { cells: HydratedPost[] }) {
 
   // Seed comment counts from the cells and fetch each post's like count.
   useEffect(() => {
+    // Seed from the cells synchronously so counts show before the like fetch resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setComments(
-      Object.fromEntries(cells.map((c) => [c.post.post_id, c.post.comment_count]))
+      Object.fromEntries(
+        cells.map((c) => [c.post.post_id, c.post.comment_count])
+      )
     )
     let cancelled = false
     const token = getToken()
@@ -51,7 +55,9 @@ export function PostGrid({ cells }: { cells: HydratedPost[] }) {
           `/interactions/posts/${c.post.post_id}/likes`,
           token
         )
-        return r.ok ? [c.post.post_id, ((await r.json()) as LikeStatus).count] : null
+        return r.ok
+          ? [c.post.post_id, ((await r.json()) as LikeStatus).count]
+          : null
       })
     ).then((pairs) => {
       if (cancelled) return
@@ -88,7 +94,8 @@ export function PostGrid({ cells }: { cells: HydratedPost[] }) {
               )}
               <div className="absolute inset-0 hidden items-center justify-center gap-6 bg-black/30 text-sm font-semibold text-white group-hover:flex">
                 <span className="flex items-center gap-1.5">
-                  <IconHeart className="size-5 fill-white" /> {likes[post.post_id] ?? 0}
+                  <IconHeart className="size-5 fill-white" />{" "}
+                  {likes[post.post_id] ?? 0}
                 </span>
                 <span className="flex items-center gap-1.5">
                   <IconMessageCircle className="size-5 fill-white" />{" "}

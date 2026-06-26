@@ -57,6 +57,8 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
 
   useEffect(() => {
     if (!ready || !authenticated || !targetId) return
+    // Reset to the loading state for the new profile before the fetch resolves.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setNotFound(false)
     apiFetch(isMe ? "/users/me" : `/users/${targetId}`, getToken())

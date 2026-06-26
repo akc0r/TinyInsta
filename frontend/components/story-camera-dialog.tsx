@@ -72,6 +72,8 @@ export function StoryCameraDialog({
 
   // Drive the camera from the dialog's open state and the capture state.
   useEffect(() => {
+    // startCamera clears the error on (re)start — an intentional reset, not a render loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open && !captured) startCamera(facing)
     else stopCamera()
     return stopCamera
@@ -99,7 +101,7 @@ export function StoryCameraDialog({
     setOpen(next)
   }
 
-  function usePreview(blob: Blob) {
+  function applyCapture(blob: Blob) {
     setCaptured(blob)
     setPreviewUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev)
@@ -123,7 +125,7 @@ export function StoryCameraDialog({
     ctx.drawImage(video, 0, 0)
     canvas.toBlob(
       (blob) => {
-        if (blob) usePreview(blob)
+        if (blob) applyCapture(blob)
       },
       "image/jpeg",
       0.9
@@ -132,7 +134,7 @@ export function StoryCameraDialog({
 
   function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0]
-    if (f) usePreview(f)
+    if (f) applyCapture(f)
     e.target.value = ""
   }
 

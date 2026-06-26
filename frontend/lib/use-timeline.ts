@@ -129,6 +129,8 @@ export function useTimeline(authorId: string | undefined, pageSize = 9) {
   useEffect(() => {
     gen.current += 1
     inFlight.current = false
+    // Reset the accumulated pages when the author changes, then refetch page one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCells([])
     setCursor(null)
     setDone(false)

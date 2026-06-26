@@ -4,11 +4,7 @@ import { useEffect, useState } from "react"
 
 import { apiFetch, type Post, type Profile } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { PostCard } from "@/components/post-card"
 
 // A post opened in a modal (from the explore / profile grids). Reuses PostCard
@@ -29,6 +25,8 @@ export function PostDialog({
   const [author, setAuthor] = useState<Profile | null>(null)
 
   useEffect(() => {
+    // Clear the previous author so the dialog never flashes a stale name while loading.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAuthor(null)
     if (!post) return
     apiFetch(`/users/${post.author_id}`, getToken())

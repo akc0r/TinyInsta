@@ -27,7 +27,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from django.core.management.base import BaseCommand
-
 from tinyinsta.bus import Producer
 from tinyinsta.events import types
 

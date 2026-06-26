@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import io
 
-from PIL import Image, ImageOps
-
 import storage
+from PIL import Image, ImageOps
 
 # Longest-edge caps for each variant (px).
 SIZES = {"thumb": 320, "display": 1080}

@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from tinyinsta.bus import Consumer, Producer
-from tinyinsta.events import Envelope, types
-
 import mongo
 from processors import images, videos
+from tinyinsta.bus import Consumer, Producer
+from tinyinsta.events import Envelope, types
 
 logging.basicConfig(level="INFO")
 logger = logging.getLogger("media-worker")

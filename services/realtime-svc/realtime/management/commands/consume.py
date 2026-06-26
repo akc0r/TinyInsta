@@ -1,7 +1,6 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.core.management.base import BaseCommand
-
 from tinyinsta.bus import Consumer
 from tinyinsta.events import Envelope, types
 

@@ -4,7 +4,6 @@ from urllib.parse import parse_qs
 import jwt
 from asgiref.sync import sync_to_async
 from channels.middleware import BaseMiddleware
-
 from tinyinsta.auth_jwt import JWKSClient, KeycloakUser
 
 _jwks_client: JWKSClient | None = None

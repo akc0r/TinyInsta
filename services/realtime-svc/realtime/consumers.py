@@ -1,5 +1,6 @@
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
+
 # Channel-layer group names allow only [a-zA-Z0-9-_.]; UUIDs (with hyphens) fit,
 # so we namespace with a dot rather than the usual colon.
 def user_group(user_id: str) -> str:
