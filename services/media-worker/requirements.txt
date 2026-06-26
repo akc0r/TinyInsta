@@ -1,4 +1,5 @@
 # tinyinsta-libs (without Django) is installed separately (see Dockerfile).
 Pillow>=10.4             # image thumbnails / resizing
 boto3>=1.35              # MinIO (S3)
+pymongo>=4.8            # media metadata (shared media-svc collection)
 # ffmpeg is provided by the image (system package), not via pip.

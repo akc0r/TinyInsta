@@ -5,6 +5,7 @@ import logging
 from tinyinsta.bus import Consumer, Producer
 from tinyinsta.events import Envelope, types
 
+import mongo
 from processors import images, videos
 
 logging.basicConfig(level="INFO")
@@ -29,12 +30,20 @@ def handle(envelope: Envelope) -> None:
         logger.warning("media-worker.unknown_kind", extra={"kind": kind})
         return
 
+    # Flip the media doc to `ready` before announcing it, so consumers that come
+    # back to GET /media/{id} always find the variants the event advertises.
+    mongo.mark_ready(media_id, variants)
+
     _producer.publish(
         types.MEDIA_PROCESSED,
         {"media_id": media_id, "variants": variants},
         key=media_id,
     )
     _producer.flush()
+    logger.info(
+        "media-worker.processed",
+        extra={"media_id": media_id, "variants": list(variants)},
+    )
 
 
 def main() -> None:

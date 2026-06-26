@@ -323,10 +323,13 @@ services:
     environment:
       <<: *svc-env
       SERVICE_NAME: media-worker
+      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_DB: media_svc
       S3_ENDPOINT: "http://minio:9000"
       S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
       S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
       S3_BUCKET: "${S3_BUCKET:-media}"
+      S3_PUBLIC_URL: "${S3_PUBLIC_URL:-http://localhost:9000}"
 
   search-svc:
     build: { <<: *svc-build, dockerfile: services/search-svc/Dockerfile }
