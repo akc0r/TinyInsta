@@ -1,3 +1,5 @@
 # tinyinsta-libs[django] is installed separately (see Dockerfile).
 gunicorn>=23.0
-elasticsearch>=8.15
+# Pin to the 8.x client line: a 9.x client sends a `compatible-with=9` header
+# that the 8.15 server rejects with HTTP 400 on every request.
+elasticsearch>=8.15,<9
