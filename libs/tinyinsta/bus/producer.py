@@ -4,6 +4,7 @@ from typing import Any
 
 from tinyinsta.bus.config import BusConfig
 from tinyinsta.events.envelope import Envelope
+from tinyinsta.observability.context import get_correlation_id, new_correlation_id
 
 
 class Producer:
@@ -32,7 +33,15 @@ class Producer:
         key: str | None = None,
         version: int = 1,
     ) -> Envelope:
-        envelope = Envelope(type=event_type, data=data, version=version)
+        # Stamp the ambient trace (set by the HTTP middleware or an upstream
+        # consumer) so the event stays correlated; mint one if published outside
+        # any request context.
+        envelope = Envelope(
+            type=event_type,
+            data=data,
+            version=version,
+            correlation_id=get_correlation_id() or new_correlation_id(),
+        )
         producer = self._ensure()
         producer.produce(
             topic=event_type,

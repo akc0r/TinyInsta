@@ -6,6 +6,7 @@ from typing import Callable, Iterable
 from tinyinsta.bus.config import BusConfig
 from tinyinsta.bus.idempotency import DedupeStore, InMemoryDedupeStore
 from tinyinsta.events.envelope import Envelope
+from tinyinsta.observability.context import set_correlation_id
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,9 @@ class Consumer:
                     logger.error("consumer.error", extra={"error": str(msg.error())})
                     continue
                 envelope = Envelope.from_json(msg.value())
+                # Re-bind the originating trace so this consumer's logs (and any
+                # events it re-emits) correlate back to the triggering action.
+                set_correlation_id(envelope.correlation_id)
                 if self._dedupe.seen(envelope.event_id):
                     consumer.commit(msg)
                     continue
