@@ -56,7 +56,9 @@ class MediaList(APIView):
             "_id": media_id,
             "owner_id": owner_id,
             "kind": request.data.get("kind", "image"),
-            "status": "ready",
+            # Variants arrive asynchronously from media-worker (media.processed);
+            # the original is already usable, so the post need not wait.
+            "status": "pending",
             "original_url": storage.object_url(object_key),
             "variants": {},
             "created_at": datetime.now(timezone.utc).isoformat(),
