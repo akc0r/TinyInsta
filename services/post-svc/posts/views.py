@@ -29,6 +29,7 @@ def _serialize(doc: dict) -> dict:
         "caption": doc.get("caption", ""),
         "hashtags": doc.get("hashtags", []),
         "media_ids": doc.get("media_ids", []),
+        "comment_count": len(doc.get("comments", [])),
         "created_at": doc["created_at"],
     }
 
