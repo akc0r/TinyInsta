@@ -32,6 +32,19 @@ home:{user_id}  -> Redis Sorted Set (member = post_id, score = timestamp)
 >
 > This is where `hometimeline-svc` **reads the user timelines**: the per-author read building block becomes the source for celebrities. This is the authentic Twitter architecture for the *hot-user problem*.
 
+**Implementation.** An author becomes a *celebrity* once its follower count (the
+local `followers:{id}` cache) reaches `CELEBRITY_FOLLOWER_THRESHOLD` (env,
+default 5000); it is then added to the global Redis set `celebrities`. From that
+point `post.created` for that author is **not** fanned out (only pushed to the
+author's own `home:`). At read time `store.page()` merges, by score:
+- the push entries in `home:{follower}`, with
+- the recent posts pulled from usertimeline-svc for each celebrity in
+  `SINTER following:{follower} celebrities`.
+
+`following:{follower}` is maintained from `user.followed` / `user.unfollowed`,
+alongside the existing `followers:{author}`. Deep pagination past a celebrity's
+recent window is best-effort.
+
 ## Infinite scroll
 
 Keyset cursor pagination `(timestamp, post_id)`, never `OFFSET`.

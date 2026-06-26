@@ -41,11 +41,18 @@ class Command(BaseCommand):
         handlers[envelope.type](envelope.data)
 
     def _on_post_created(self, data: dict) -> None:
-        # Fan-out on write: push the post to every follower's home timeline, and
-        # to the author's own so they see it immediately after posting.
+        # Hybrid fan-out. For a celebrity (follower count over the threshold) we
+        # do NOT fan out to followers — too expensive; their followers pull these
+        # posts at read time (store.page). We still push to the author's own home
+        # so they see their post immediately.
         author_id = data["author_id"]
+        ts = _epoch(data.get("created_at"))
+        if store.is_celebrity(author_id):
+            store.mark_celebrity(author_id)
+            store.fan_out([author_id], data["post_id"], ts)
+            return
         targets = store.followers_of(author_id) + [author_id]
-        store.fan_out(targets, data["post_id"], _epoch(data.get("created_at")))
+        store.fan_out(targets, data["post_id"], ts)
 
     def _on_post_deleted(self, data: dict) -> None:
         author_id = data["author_id"]
@@ -55,9 +62,18 @@ class Command(BaseCommand):
     def _on_user_followed(self, data: dict) -> None:
         follower_id, followee_id = data["follower_id"], data["followee_id"]
         store.add_follower(followee_id, follower_id)
-        store.back_fill(follower_id, followee_id)
+        store.add_following(follower_id, followee_id)
+        # Promote to celebrity as soon as the follower count crosses the
+        # threshold — independent of post/follow event ordering across topics.
+        # A celebrity's posts aren't pushed, so back-fill would miss them; the
+        # read-time pull (store.page) surfaces them instead.
+        if store.is_celebrity(followee_id):
+            store.mark_celebrity(followee_id)
+        else:
+            store.back_fill(follower_id, followee_id)
 
     def _on_user_unfollowed(self, data: dict) -> None:
         follower_id, followee_id = data["follower_id"], data["followee_id"]
         store.remove_follower(followee_id, follower_id)
+        store.remove_following(follower_id, followee_id)
         store.purge(follower_id, followee_id)

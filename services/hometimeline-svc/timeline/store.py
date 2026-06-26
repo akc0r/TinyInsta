@@ -24,6 +24,15 @@ def followers_key(author_id: str) -> str:
     return f"followers:{author_id}"
 
 
+def following_key(user_id: str) -> str:
+    return f"following:{user_id}"
+
+
+# Global set of accounts that have crossed the celebrity threshold. We pull their
+# posts at read time instead of fanning out on write — see the hybrid path below.
+CELEBRITIES_KEY = "celebrities"
+
+
 # --- Follower graph cache ---------------------------------------------------
 # A local projection of the social graph, built from user.followed /
 # user.unfollowed events, so fan-out on post.created never has to call user-svc
@@ -38,6 +47,33 @@ def remove_follower(author_id: str, follower_id: str) -> None:
 
 def followers_of(author_id: str) -> list[str]:
     return list(get_redis().smembers(followers_key(author_id)))
+
+
+def add_following(follower_id: str, author_id: str) -> None:
+    get_redis().sadd(following_key(follower_id), author_id)
+
+
+def remove_following(follower_id: str, author_id: str) -> None:
+    get_redis().srem(following_key(follower_id), author_id)
+
+
+# --- Celebrity (hybrid) bookkeeping ----------------------------------------
+def is_celebrity(author_id: str) -> bool:
+    """True once an author's follower count crosses the celebrity threshold.
+
+    Evaluated against the local follower cache, so no cross-service call on the
+    hot path. Above this line we stop fanning out the author's posts on write.
+    """
+    return get_redis().scard(followers_key(author_id)) >= settings.CELEBRITY_FOLLOWER_THRESHOLD
+
+
+def mark_celebrity(author_id: str) -> None:
+    get_redis().sadd(CELEBRITIES_KEY, author_id)
+
+
+def celebs_followed(follower_id: str) -> list[str]:
+    """The celebrities a given user follows (intersection of two Redis sets)."""
+    return list(get_redis().sinter(following_key(follower_id), CELEBRITIES_KEY))
 
 
 def _trim(pipe, key: str) -> None:
@@ -96,22 +132,35 @@ def purge(follower_id: str, author_id: str) -> None:
         get_redis().zrem(home_key(follower_id), *post_ids)
 
 
-# --- Read -------------------------------------------------------------------
+# --- Read (hybrid: push ⊕ celebrity pull) -----------------------------------
 def page(user_id: str, cursor: str | None, limit: int = 20) -> dict:
     """Keyset pagination over the home timeline, newest first.
 
-    `cursor` is the score of the last item from the previous page; it is
-    excluded so pages never overlap. `next_cursor` is None on the last page.
+    Hybrid read: the push-based entries in ``home:{user}`` (posts fanned out by
+    normal accounts) are merged at read time with the recent posts of every
+    celebrity the user follows — pulled from usertimeline-svc rather than stored
+    per-follower. `cursor` is the score (epoch seconds) of the last item from the
+    previous page; it is excluded so pages never overlap.
     """
+    max_cursor = float(cursor) if cursor else None
+    candidates: dict[str, float] = {}
+
+    # 1. Push entries: the `limit` highest-scoring posts below the cursor.
     max_score = f"({cursor}" if cursor else "+inf"
-    rows = get_redis().zrevrangebyscore(
-        home_key(user_id),
-        max_score,
-        "-inf",
-        start=0,
-        num=limit,
-        withscores=True,
-    )
-    items = [post_id for post_id, _ in rows]
-    next_cursor = rows[-1][1] if len(rows) == limit else None
+    for post_id, score in get_redis().zrevrangebyscore(
+        home_key(user_id), max_score, "-inf", start=0, num=limit, withscores=True
+    ):
+        candidates[post_id] = score
+
+    # 2. Pull entries: recent posts of each celebrity followed, merged in.
+    #    (Deep pagination beyond a celebrity's recent window is best-effort.)
+    for celeb_id in celebs_followed(user_id):
+        for post_id, score in clients.recent_posts(celeb_id):
+            if max_cursor is None or score < max_cursor:
+                candidates[post_id] = score
+
+    # 3. Merge by score desc, take the page.
+    merged = sorted(candidates.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+    items = [post_id for post_id, _ in merged]
+    next_cursor = merged[-1][1] if len(merged) == limit else None
     return {"items": items, "next_cursor": next_cursor}
