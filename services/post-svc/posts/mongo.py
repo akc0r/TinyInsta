@@ -13,3 +13,12 @@ def get_db():
 
 def posts_collection():
     return get_db()["posts"]
+
+
+def saves_collection():
+    # _id = "{user_id}:{post_id}" enforces one save per (user, post).
+    return get_db()["saves"]
+
+
+def reposts_collection():
+    return get_db()["reposts"]

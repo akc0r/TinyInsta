@@ -7,7 +7,7 @@ INSTALLED_APPS += ["media"]  # noqa: F405
 
 DATABASES = {"default": {"ENGINE": "django.db.backends.dummy"}}
 
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongo:27017")
+MONGO_URI = os.environ.get("MONGO_URI", "mongodb://mongo:27017/?replicaSet=rs0")
 MONGO_DB = os.environ.get("MONGO_DB", "media_svc")
 
 S3_ENDPOINT = os.environ.get("S3_ENDPOINT", "http://minio:9000")
