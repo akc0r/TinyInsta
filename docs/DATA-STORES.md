@@ -10,7 +10,8 @@ TinyInsta uses **five databases + one object store**, each chosen for what it do
 | **MongoDB** | Posts + comments, media metadata | Flexible-schema documents, embedded comments, reading a post = a single document. |
 | **Elasticsearch** | Search & explore | Full-text, hashtag/user search, relevance scoring. A read model fed by events. |
 | **Postgres** | Likes, profiles, stories, notifications | Relational integrity, uniqueness constraints (one like per user/post), transactions. Also Keycloak's database. |
-| **Redis** | Feed cache, counters, story TTL, pub/sub, sessions | In-memory structures (sorted sets for the feed), native TTL, real-time pub/sub. |
+| **Redis** | Feed cache, counters, story TTL, pub/sub, sessions, ranking signals | In-memory structures (sorted sets for the feed), native TTL, real-time pub/sub. |
+| **Cassandra** | Direct messages | Write-heavy, append-only, time-ordered, partitioned by conversation — the canonical wide-column / query-first workload. |
 | **MinIO** | Photos, videos, variants | S3-compatible object storage; direct client upload via presigned URL. |
 
 ## Who owns what
@@ -25,7 +26,9 @@ TinyInsta uses **five databases + one object store**, each chosen for what it do
 | stories-svc | Postgres + Redis (TTL) |
 | media-svc / worker | MinIO (binaries) + MongoDB (metadata) |
 | search-svc | **Elasticsearch** |
-| realtime-svc | Redis (pub/sub) + Postgres (notifications) |
+| realtime-svc | Redis (pub/sub) + Postgres (notifications + username→id projection) |
+| ranking-svc | Redis (engagement + affinity signals) |
+| messaging-svc | **Cassandra** (conversations + messages) |
 
 ## Per-store details
 
@@ -63,6 +66,24 @@ TinyInsta uses **five databases + one object store**, each chosen for what it do
 - TTL keys for the story bar (native 24h expiry).
 - Pub/sub as the Django Channels channel layer (WebSocket).
 
+### Cassandra — direct messages
+- **Query-first data model** (one table per read pattern), the opposite of a normalised schema:
+  - `messages_by_conversation` — `PRIMARY KEY ((conversation_id), message_id)` with a
+    `timeuuid` clustering key DESC → a conversation's latest messages (and older pages)
+    are one sequential partition read.
+  - `conversations_by_user` — `PRIMARY KEY ((user_id), conversation_id)` → a user's inbox
+    is one partition read; ordered by `last_message_at` client-side (few conversations per user).
+- 1:1 conversation id is deterministic (`sorted(a, b)` joined) so it's stable regardless of sender.
+- Why not Postgres: messages are append-only, high-volume, and never need cross-row
+  integrity or joins — exactly where a wide-column store beats a relational one. (Likes,
+  profiles and notifications stay on Postgres, where uniqueness/transactions matter.)
+
+### Redis — ranking signals (ranking-svc)
+- Per-post engagement (`rank:eng:{post_id}`) and per-`(viewer, author)` affinity
+  (`rank:aff:{viewer}:{author}`) counters, plus post metadata — all derived from the
+  `post.*` topics and rebuildable. ranking-svc blends recency⊕engagement⊕affinity into a
+  feed score consumed by hometimeline-svc at read time.
+
 ## Incremental startup
 
-The six stores need not all run at once. Each is gated by a Docker Compose profile, so an environment can bring up only the stores it needs — `make infra` for the baseline, additional profiles (`mongo`, `minio`, `neo4j`, `search`) on top.
+The six stores need not all run at once. Each is gated by a Docker Compose profile, so an environment can bring up only the stores it needs — `make infra` for the baseline, additional profiles (`mongo`, `minio`, `neo4j`, `search`, `cassandra`) on top.

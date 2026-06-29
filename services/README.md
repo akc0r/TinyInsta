@@ -7,15 +7,17 @@ DRF endpoints, store access, and bus workers.
 | Service | Store(s) | Emits | Consumes |
 |---|---|---|---|
 | [user-svc](user-svc) | Postgres + Neo4j | user.created/followed/unfollowed, user.blocked/unblocked, user.close_friend_added/removed | — |
-| [post-svc](post-svc) | MongoDB | post.created/commented/deleted | media.processed |
+| [post-svc](post-svc) | MongoDB | post.created/commented/deleted, post.comment_edited/deleted, post.saved/unsaved, post.reposted/unreposted, user.mentioned (via outbox) | media.processed |
 | [usertimeline-svc](usertimeline-svc) | Redis | — | post.created/deleted |
-| [hometimeline-svc](hometimeline-svc) | Redis | — | post.created, user.followed/unfollowed, post.deleted |
+| [hometimeline-svc](hometimeline-svc) | Redis | — | post.created, user.followed/unfollowed, post.deleted (+ reads ranking-svc) |
 | [interaction-svc](interaction-svc) | Postgres + Redis | post.liked/unliked | — |
 | [stories-svc](stories-svc) | Postgres + Redis | story.created/viewed | user.followed/unfollowed, user.close_friend_added/removed |
 | [media-svc](media-svc) | MinIO + MongoDB | media.uploaded | — |
 | [media-worker](media-worker) | MinIO | media.processed | media.uploaded |
 | [search-svc](search-svc) | Elasticsearch | — | user.created, post.created/deleted |
-| [realtime-svc](realtime-svc) | Redis + Postgres | — | post.liked/commented, story.created, user.followed |
+| [realtime-svc](realtime-svc) | Redis + Postgres | — | post.liked/commented, story.created, user.created/followed/mentioned, post.reposted, message.sent |
+| [ranking-svc](ranking-svc) | Redis | — | post.created/deleted/liked/unliked/commented |
+| [messaging-svc](messaging-svc) | Cassandra | message.sent | — |
 
 ## Anatomy of an HTTP service
 

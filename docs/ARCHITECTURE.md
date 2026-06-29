@@ -100,6 +100,7 @@ Two components are derived **read views**, not systems of record:
 | User timeline (Redis, per author) | `post.created`, `post.deleted` | post-svc (MongoDB) |
 | Home timeline (Redis, per follower) | `post.created`, `user.followed` | post-svc (MongoDB) |
 | Search index (Elasticsearch) | `user.created`, `post.created` | user-svc / post-svc |
+| Ranking signals (Redis, ranking-svc) | `post.created/liked/commented/deleted` | post-svc / interaction-svc |
 
 Practical consequence: these views are **rebuildable**. If the Elasticsearch index is corrupted, rebuild it by replaying the events. This is deliberate CQRS — separating the write model (normalized, consistent) from the read models (denormalized, optimized for display).
 
@@ -117,6 +118,16 @@ Strategies for the **home timeline**:
 - **Hybrid** — push for normal accounts; for "celebrities" (> N followers), no fan-out on write: at read time, `hometimeline-svc` **merges** `home:{follower}` with the `usertimeline:{celeb}` lists read from `usertimeline-svc`. This is where the home timeline **reads the user timelines** — the authentic Twitter architecture for the *hot-user problem*.
 
 **Infinite scroll:** **keyset cursor** pagination `(timestamp, post_id)`, never `OFFSET` (which degrades and duplicates under concurrent inserts). `GET /home?cursor=&limit=20` → items + `next_cursor`.
+
+**Algorithmic re-rank (optional).** With `RANKING_ENABLED`, hometimeline-svc posts each page's
+candidate ids to **ranking-svc**, which scores them by recency ⊕ engagement ⊕ viewer↔author
+affinity (Redis signals derived from `post.*` events) and returns an order applied *within* the
+page — keyset pagination stays chronological. If ranking-svc is disabled or unreachable the feed
+falls back to pure chronological order, so ranking is an enhancement, never a hard dependency.
+
+**Direct messages.** messaging-svc owns DM persistence on **Cassandra** (the write-heavy,
+time-ordered, partition-by-conversation workload); it emits `message.sent`, and realtime-svc — the
+WebSocket hub — delivers it live to the recipient. Send is HTTP (client→server), receive is WS.
 
 ## Authentication
 

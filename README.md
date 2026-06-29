@@ -139,7 +139,11 @@ make front          # cd frontend && pnpm install && pnpm dev
 
 Then: frontend on `http://localhost:3000`, API via Traefik on `http://localhost/api`, Keycloak console on `http://localhost:8080`, MinIO console on `http://localhost:9001`, Traefik dashboard on `http://localhost:8090`.
 
-> ⚙️ Datastores are gated by Docker Compose **profiles**, so you can bring up subsets rather than all six at once (`make infra`, or `docker compose --profile infra --profile mongo up -d`).
+> ⚙️ Datastores are gated by Docker Compose **profiles**, so you can bring up subsets rather than all seven at once (`make infra`, or `docker compose --profile infra --profile mongo up -d`).
+
+> 🧠 **Resources.** The full stack (7 datastores incl. Cassandra/Elasticsearch/Neo4j + a dozen services) is memory-hungry — give **Docker Desktop ≥ 8 GB** of RAM. The JVM stores have bounded heaps + `mem_limit`, and HTTP services default to a single gunicorn worker (`WEB_CONCURRENCY`), to fit a laptop; raise both with more RAM.
+
+> 🗄️ **Migrations run automatically.** Each relational service has a one-shot `*-migrate` container that applies Django migrations before the service starts — no manual `migrate` step.
 
 ## 📚 Documentation
 
