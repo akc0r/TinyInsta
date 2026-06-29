@@ -15,7 +15,7 @@ infra: ## Start core infrastructure (traefik, postgres, redis, redpanda, keycloa
 
 .PHONY: up
 up: ## Start infra + all datastores + all application services
-	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile apps up -d
+	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile cassandra --profile apps up -d
 
 .PHONY: build
 build: ## (Re)build application images
@@ -39,11 +39,11 @@ seed: ## Seed 10k users + 1 celebrity (publishes events; consumers converge). AR
 
 .PHONY: down
 down: ## Stop everything
-	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile observability --profile apps down
+	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile cassandra --profile observability --profile apps down
 
 .PHONY: clean
 clean: ## Stop everything AND remove volumes (destroys data)
-	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile observability --profile apps down -v
+	$(COMPOSE) --profile infra --profile mongo --profile minio --profile neo4j --profile search --profile cassandra --profile observability --profile apps down -v
 
 # --- Validation -------------------------------------------------------------
 .PHONY: config

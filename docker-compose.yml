@@ -22,10 +22,24 @@ x-svc-env: &svc-env
   OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
   OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8080/realms/tinyinsta}"
   OIDC_AUDIENCE: "${OIDC_AUDIENCE:-}"
+  # gunicorn workers per HTTP service. 1 by default to keep the full stack within
+  # a laptop Docker VM; raise (e.g. 2) where resources allow.
+  WEB_CONCURRENCY: "${WEB_CONCURRENCY:-1}"
 
 x-svc-build: &svc-build
   context: .
   # `dockerfile` is set per service below.
+
+# One-shot DB migration for relational services. Each <svc>-migrate runs
+# `manage.py migrate` once and exits; the service + its worker wait for it to
+# complete successfully (depends_on: condition: service_completed_successfully),
+# so the schema is always present before traffic — no manual migrate step.
+x-migrate: &migrate
+  command: ["python", "manage.py", "migrate", "--noinput"]
+  restart: "on-failure"
+  depends_on:
+    postgres:
+      condition: service_healthy
 
 services:
   # ===========================================================================
@@ -104,14 +118,17 @@ services:
       - >-
         rpk topic create -X brokers=redpanda:9092
         user.created user.followed user.unfollowed
-        user.blocked user.unblocked
+        user.blocked user.unblocked user.mentioned
         user.close_friend_added user.close_friend_removed
-        post.created post.commented post.deleted post.liked post.unliked
+        post.created post.commented post.comment_edited post.comment_deleted
+        post.deleted post.liked post.unliked
+        post.saved post.unsaved post.reposted post.unreposted
         media.uploaded media.processed
         story.created story.viewed
+        message.sent
         dlq.post-svc dlq.usertimeline-svc dlq.search-svc
         dlq.hometimeline-svc dlq.realtime-svc dlq.stories-svc
-        dlq.media-worker || true
+        dlq.media-worker dlq.ranking-svc dlq.messaging-svc || true
     restart: "no"
 
   keycloak:
@@ -140,10 +157,37 @@ services:
   mongo:
     image: mongo:7
     profiles: ["mongo"]
+    # Single-node replica set: enables multi-document transactions (the
+    # transactional outbox in post-svc writes the post and its event atomically)
+    # and change streams. Initialised once by the mongo-init one-shot below.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo-init:
+    image: mongo:7
+    profiles: ["mongo"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    # Idempotent: rs.initiate() throws "already initialized" on re-run, which we
+    # swallow so the one-shot can be re-applied without error.
+    entrypoint:
+      - bash
+      - -c
+      - |
+        mongosh --host mongo:27017 --quiet --eval '
+          try { rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}); }
+          catch (e) { if (!/already initialized/.test(e.message)) throw e; }
+        '
 
   minio:
     image: minio/minio:latest
@@ -178,6 +222,11 @@ services:
     profiles: ["neo4j"]
     environment:
       NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-tinyinsta}"
+      # Bound the JVM heap + page cache so Neo4j fits a laptop Docker VM.
+      NEO4J_server_memory_heap_initial__size: "256m"
+      NEO4J_server_memory_heap_max__size: "512m"
+      NEO4J_server_memory_pagecache_size: "256m"
+    mem_limit: 1g
     ports:
       - "7474:7474"   # console
       - "7687:7687"   # bolt
@@ -191,10 +240,44 @@ services:
       discovery.type: single-node
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    # 512m heap + Lucene/off-heap; capped so ES can't balloon and starve the VM.
+    mem_limit: 1200m
     ports:
       - "9200:9200"
     volumes:
       - es-data:/usr/share/elasticsearch/data
+    # ES boots slower under the heap cap; gate search-svc/worker on it being up
+    # so the consumer doesn't crash-loop on "connection refused" at startup.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  cassandra:
+    image: cassandra:5
+    profiles: ["cassandra"]
+    environment:
+      CASSANDRA_CLUSTER_NAME: tinyinsta
+      # Single-node dev heap. The image otherwise auto-sizes off-heap *direct*
+      # memory to ~1.4G (from the VM's total RAM), which alone blows past any
+      # sane mem_limit and gets the container OOM-killed — so we pin both the
+      # heap and MaxDirectMemorySize. Total stays well under mem_limit below.
+      MAX_HEAP_SIZE: "512M"
+      HEAP_NEWSIZE: "100M"
+      JVM_EXTRA_OPTS: "-XX:MaxDirectMemorySize=512M"
+    # Ceiling for heap (512M) + direct (512M) + JVM overhead (~250M). Fits a 6 GB
+    # Docker VM next to the other stores; raise it (and the two sizes) with more RAM.
+    mem_limit: 1400m
+    ports:
+      - "9042:9042"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe keyspaces' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
 
   redpanda-console:            # tools profile (optional)
     image: redpandadata/console:v2.7.2
@@ -259,10 +342,20 @@ services:
   # ===========================================================================
   # APPLICATION SERVICES (profile: apps, + one profile per service)
   # ===========================================================================
+  user-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/user-svc
+    profiles: ["apps", "user-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: user-svc
   user-svc:
     build: { <<: *svc-build, dockerfile: services/user-svc/Dockerfile }
     image: tinyinsta/user-svc
     profiles: ["apps", "user-svc"]
+    depends_on:
+      user-svc-migrate:
+        condition: service_completed_successfully
     environment:
       <<: *svc-env
       SERVICE_NAME: user-svc
@@ -281,7 +374,7 @@ services:
     environment:
       <<: *svc-env
       SERVICE_NAME: post-svc
-      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.posts.rule=PathPrefix(`/api/posts`)"
@@ -293,7 +386,18 @@ services:
     environment:
       <<: *svc-env
       SERVICE_NAME: post-svc
-      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
+    depends_on: [post-svc]
+  # Transactional-outbox relay: publishes events committed alongside the post
+  # write to the bus. Separate process so the API never publishes inline.
+  post-outbox-relay:
+    image: tinyinsta/post-svc
+    profiles: ["apps", "post-svc"]
+    command: python manage.py outbox_relay
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: post-svc
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
     depends_on: [post-svc]
 
   usertimeline-svc:
@@ -324,6 +428,9 @@ services:
       <<: *svc-env
       SERVICE_NAME: hometimeline-svc
       USERTIMELINE_URL: "http://usertimeline-svc:8000"
+      # Algorithmic feed re-rank via ranking-svc (chronological if off/unreachable).
+      RANKING_ENABLED: "${RANKING_ENABLED:-true}"
+      RANKING_URL: "http://ranking-svc:8000"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.home.rule=PathPrefix(`/api/home`)"
@@ -338,10 +445,63 @@ services:
       USERTIMELINE_URL: "http://usertimeline-svc:8000"
     depends_on: [hometimeline-svc]
 
+  # Algorithmic ranking read model. Internal only (no Traefik route): scored
+  # server-to-server by hometimeline-svc at feed-read time.
+  ranking-svc:
+    build: { <<: *svc-build, dockerfile: services/ranking-svc/Dockerfile }
+    image: tinyinsta/ranking-svc
+    profiles: ["apps", "ranking-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: ranking-svc
+  ranking-worker:
+    image: tinyinsta/ranking-svc
+    profiles: ["apps", "ranking-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: ranking-svc
+    depends_on: [ranking-svc]
+
+  # Direct messages, backed by Cassandra (write-heavy, time-ordered).
+  messaging-svc:
+    build: { <<: *svc-build, dockerfile: services/messaging-svc/Dockerfile }
+    image: tinyinsta/messaging-svc
+    profiles: ["apps", "messaging-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: messaging-svc
+      CASSANDRA_HOSTS: cassandra
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.messaging.rule=PathPrefix(`/api/messaging`)"
+      - "traefik.http.routers.messaging.middlewares=apistrip@file,ratelimit@file"
+  # One-shot: create the Cassandra keyspace/tables before the API serves traffic.
+  messaging-init:
+    image: tinyinsta/messaging-svc
+    profiles: ["apps", "messaging-svc"]
+    command: python manage.py init_cassandra
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: messaging-svc
+      CASSANDRA_HOSTS: cassandra
+    restart: "on-failure"
+    depends_on: [messaging-svc]
+
+  interaction-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/interaction-svc
+    profiles: ["apps", "interaction-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: interaction-svc
   interaction-svc:
     build: { <<: *svc-build, dockerfile: services/interaction-svc/Dockerfile }
     image: tinyinsta/interaction-svc
     profiles: ["apps", "interaction-svc"]
+    depends_on:
+      interaction-svc-migrate:
+        condition: service_completed_successfully
     environment:
       <<: *svc-env
       SERVICE_NAME: interaction-svc
@@ -350,10 +510,20 @@ services:
       - "traefik.http.routers.interactions.rule=PathPrefix(`/api/interactions`)"
       - "traefik.http.routers.interactions.middlewares=apistrip@file,ratelimit@file"
 
+  stories-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/stories-svc
+    profiles: ["apps", "stories-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: stories-svc
   stories-svc:
     build: { <<: *svc-build, dockerfile: services/stories-svc/Dockerfile }
     image: tinyinsta/stories-svc
     profiles: ["apps", "stories-svc"]
+    depends_on:
+      stories-svc-migrate:
+        condition: service_completed_successfully
     environment:
       <<: *svc-env
       SERVICE_NAME: stories-svc
@@ -377,7 +547,7 @@ services:
     environment:
       <<: *svc-env
       SERVICE_NAME: media-svc
-      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
       MONGO_DB: media_svc
       S3_ENDPOINT: "http://minio:9000"
       S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
@@ -397,7 +567,7 @@ services:
     environment:
       <<: *svc-env
       SERVICE_NAME: media-worker
-      MONGO_URI: "mongodb://mongo:27017"
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
       MONGO_DB: media_svc
       S3_ENDPOINT: "http://minio:9000"
       S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
@@ -410,6 +580,9 @@ services:
     build: { <<: *svc-build, dockerfile: services/search-svc/Dockerfile }
     image: tinyinsta/search-svc
     profiles: ["apps", "search-svc"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
     environment:
       <<: *svc-env
       SERVICE_NAME: search-svc
@@ -428,10 +601,20 @@ services:
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
     depends_on: [search-svc]
 
+  realtime-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/realtime-svc
+    profiles: ["apps", "realtime-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: realtime-svc
   realtime-svc:
     build: { <<: *svc-build, dockerfile: services/realtime-svc/Dockerfile }
     image: tinyinsta/realtime-svc
     profiles: ["apps", "realtime-svc"]
+    depends_on:
+      realtime-svc-migrate:
+        condition: service_completed_successfully
     environment:
       <<: *svc-env
       SERVICE_NAME: realtime-svc
@@ -462,4 +645,5 @@ volumes:
   minio-data:
   neo4j-data:
   es-data:
+  cassandra-data:
   grafana-data:

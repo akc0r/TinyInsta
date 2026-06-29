@@ -18,4 +18,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/post-svc/ .
 
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--workers", "2"]
+CMD exec gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers ${WEB_CONCURRENCY:-2}
