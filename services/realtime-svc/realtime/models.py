@@ -8,6 +8,8 @@ class Notification(models.Model):
         LIKE = "like"
         COMMENT = "comment"
         FOLLOW = "follow"
+        MENTION = "mention"
+        REPOST = "repost"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user_id = models.UUIDField()
@@ -20,3 +22,18 @@ class Notification(models.Model):
         db_table = "notifications"
         indexes = [models.Index(fields=["user_id", "read"], name="notif_user_read_idx")]
         ordering = ["-created_at"]
+
+
+class UserHandle(models.Model):
+    """username → user_id projection, built from user.created.
+
+    Lets realtime-svc resolve an @mention (which arrives as a raw username,
+    because post-svc does not own the mapping) to the user it should notify,
+    without a sync call to user-svc. Rebuildable by replaying user.created.
+    """
+
+    user_id = models.UUIDField(primary_key=True)
+    username = models.CharField(max_length=150, unique=True, db_index=True)
+
+    class Meta:
+        db_table = "user_handles"

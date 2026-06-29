@@ -56,3 +56,7 @@ class RealtimeConsumer(AsyncJsonWebsocketConsumer):
 
     async def notification(self, event):
         await self.send_json({"type": "notification", **event["data"]})
+
+    async def message_sent(self, event):
+        # Live direct message delivered to the recipient's user group.
+        await self.send_json({"type": "message.sent", **event["data"]})

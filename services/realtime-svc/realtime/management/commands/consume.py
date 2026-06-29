@@ -5,7 +5,7 @@ from tinyinsta.bus import Consumer, redis_dedupe_store
 from tinyinsta.events import Envelope, types
 
 from realtime.consumers import post_group, user_group
-from realtime.models import Notification
+from realtime.models import Notification, UserHandle
 
 
 class Command(BaseCommand):
@@ -14,7 +14,11 @@ class Command(BaseCommand):
         types.POST_UNLIKED,
         types.POST_COMMENTED,
         types.STORY_CREATED,
+        types.USER_CREATED,
         types.USER_FOLLOWED,
+        types.USER_MENTIONED,
+        types.POST_REPOSTED,
+        types.MESSAGE_SENT,
     ]
     GROUP_ID = "realtime-svc"
 
@@ -33,7 +37,11 @@ class Command(BaseCommand):
             types.POST_LIKED: self._on_like,
             types.POST_UNLIKED: self._on_like,
             types.POST_COMMENTED: self._on_comment,
+            types.USER_CREATED: self._on_user_created,
             types.USER_FOLLOWED: self._on_follow,
+            types.USER_MENTIONED: self._on_mention,
+            types.POST_REPOSTED: self._on_repost,
+            types.MESSAGE_SENT: self._on_message,
             types.STORY_CREATED: self._on_story,
         }
         handlers[envelope.type](envelope.data)
@@ -94,6 +102,58 @@ class Command(BaseCommand):
             Notification.Type.FOLLOW,
             {"actor_id": data["follower_id"]},
         )
+
+    def _on_user_created(self, data: dict) -> None:
+        # Maintain the username→id projection used to resolve @mentions.
+        UserHandle.objects.update_or_create(
+            user_id=data["user_id"], defaults={"username": data["username"].lower()}
+        )
+
+    def _on_mention(self, data: dict) -> None:
+        # Resolve the raw @username to a user via the local projection; skip if we
+        # haven't seen that user.created yet (the mention is simply not delivered —
+        # acceptable, and replayable once the projection catches up).
+        handle = UserHandle.objects.filter(username=data["username"].lower()).first()
+        if handle is None or str(handle.user_id) == data.get("actor_id"):
+            return
+        self._notify(
+            str(handle.user_id),
+            Notification.Type.MENTION,
+            {
+                "actor_id": data.get("actor_id"),
+                "source_type": data.get("source_type"),
+                "source_id": data.get("source_id"),
+                "post_id": data.get("post_id"),
+            },
+        )
+
+    def _on_repost(self, data: dict) -> None:
+        # Notify the original author that someone reposted them (not self-reposts).
+        author, reposter = data.get("author_id"), data.get("user_id")
+        if author and author != reposter:
+            self._notify(
+                author,
+                Notification.Type.REPOST,
+                {"actor_id": reposter, "post_id": data.get("post_id")},
+            )
+
+    def _on_message(self, data: dict) -> None:
+        # Push a new DM live to the recipient's socket (the sender already has it
+        # from the POST response). messaging-svc owns persistence; realtime-svc is
+        # only the delivery hub, so no notification row is written here.
+        recipient = data.get("recipient_id")
+        if recipient:
+            self._send(
+                user_group(recipient),
+                "message.sent",
+                {
+                    "conversation_id": data.get("conversation_id"),
+                    "message_id": data.get("message_id"),
+                    "sender_id": data.get("sender_id"),
+                    "body": data.get("body", ""),
+                    "created_at": data.get("created_at"),
+                },
+            )
 
     def _on_story(self, data: dict) -> None:
         # Live push of a new story into connected followers' bars needs the
