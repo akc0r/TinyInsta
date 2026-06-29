@@ -17,6 +17,10 @@ function summary(n: Notification, actor: string): string {
       return `${actor} commented: ${n.payload.body ?? ""}`.trim()
     case "like":
       return `${actor} liked your post.`
+    case "mention":
+      return `${actor} mentioned you in a ${n.payload.source_type ?? "post"}.`
+    case "repost":
+      return `${actor} reposted your post.`
     default:
       return "New activity."
   }

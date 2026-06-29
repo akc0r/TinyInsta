@@ -16,6 +16,14 @@ export type RealtimeMessage =
       read: boolean
       created_at: string
     }
+  | {
+      type: "message.sent"
+      conversation_id: string
+      message_id: string
+      sender_id: string
+      body: string
+      created_at: string
+    }
 
 type Handler = (msg: RealtimeMessage) => void
 
@@ -24,6 +32,7 @@ class RealtimeClient {
   private getToken: (() => string | undefined) | null = null
   private postHandlers = new Map<string, Set<Handler>>()
   private notifHandlers = new Set<Handler>()
+  private messageHandlers = new Set<Handler>()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
   // Wire the token source and open the socket (idempotent).
@@ -84,6 +93,10 @@ class RealtimeClient {
       this.notifHandlers.forEach((h) => h(msg))
       return
     }
+    if (msg.type === "message.sent") {
+      this.messageHandlers.forEach((h) => h(msg))
+      return
+    }
     if ("post_id" in msg) {
       this.postHandlers.get(msg.post_id)?.forEach((h) => h(msg))
     }
@@ -116,6 +129,14 @@ class RealtimeClient {
     this.notifHandlers.add(handler)
     this.ensure()
     return () => this.notifHandlers.delete(handler)
+  }
+
+  // Subscribe to incoming direct messages (delivered to this user's group by
+  // realtime-svc). Returns an unsubscribe fn.
+  onMessage(handler: Handler): () => void {
+    this.messageHandlers.add(handler)
+    this.ensure()
+    return () => this.messageHandlers.delete(handler)
   }
 }
 

@@ -209,6 +209,9 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
                 <Button asChild variant="outline" size="sm">
                   <Link href="/upload">New post</Link>
                 </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/saved">Saved</Link>
+                </Button>
               </>
             ) : (
               <>

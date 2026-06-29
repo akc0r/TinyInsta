@@ -51,12 +51,15 @@ export default function UploadPage() {
     e.preventDefault()
     if (!file) return
     setBusy(true)
+    // A video upload becomes a reel (kind=reel); the media-worker transcodes it.
+    const isVideo = file.type.startsWith("video")
+    const mediaKind = isVideo ? "video" : "image"
     try {
       // 1) Ask media-svc for a presigned PUT URL.
       setStatus("Requesting upload URL…")
       const ticketRes = await apiFetch("/media/upload-url", getToken(), {
         method: "POST",
-        body: JSON.stringify({ kind: "image" }),
+        body: JSON.stringify({ kind: mediaKind }),
       })
       if (!ticketRes.ok) throw new Error(`upload-url ${ticketRes.status}`)
       const ticket: UploadTicket = await ticketRes.json()
@@ -70,15 +73,19 @@ export default function UploadPage() {
       setStatus("Registering media…")
       const mediaRes = await apiFetch("/media", getToken(), {
         method: "POST",
-        body: JSON.stringify({ media_id: ticket.media_id, kind: "image" }),
+        body: JSON.stringify({ media_id: ticket.media_id, kind: mediaKind }),
       })
       if (!mediaRes.ok) throw new Error(`media ${mediaRes.status}`)
 
-      // 4) Create the post.
+      // 4) Create the post (a video becomes a reel).
       setStatus("Creating post…")
       const postRes = await apiFetch("/posts", getToken(), {
         method: "POST",
-        body: JSON.stringify({ caption, media_ids: [ticket.media_id] }),
+        body: JSON.stringify({
+          caption,
+          media_ids: [ticket.media_id],
+          kind: isVideo ? "reel" : "post",
+        }),
       })
       if (!postRes.ok) throw new Error(`posts ${postRes.status}`)
       const post: Post = await postRes.json()
@@ -97,22 +104,36 @@ export default function UploadPage() {
       <h1 className="text-lg font-semibold">New post</h1>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="space-y-1.5">
-          <Label htmlFor="photo">Photo</Label>
+          <Label htmlFor="photo">Photo or video</Label>
           <Input
             id="photo"
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
+          {file?.type.startsWith("video") && (
+            <p className="text-xs text-muted-foreground">
+              Videos are posted as Reels.
+            </p>
+          )}
         </div>
-        {file && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={URL.createObjectURL(file)}
-            alt="preview"
-            className="aspect-square w-full rounded object-cover"
-          />
-        )}
+        {file &&
+          (file.type.startsWith("video") ? (
+            <video
+              src={URL.createObjectURL(file)}
+              className="aspect-square w-full rounded object-cover"
+              controls
+              muted
+              playsInline
+            />
+          ) : (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={URL.createObjectURL(file)}
+              alt="preview"
+              className="aspect-square w-full rounded object-cover"
+            />
+          ))}
         <div className="space-y-1.5">
           <Label htmlFor="caption">Caption</Label>
           <Textarea

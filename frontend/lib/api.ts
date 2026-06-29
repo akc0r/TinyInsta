@@ -88,6 +88,23 @@ export type Post = {
   media_ids: string[]
   comment_count: number
   created_at: string
+  // Phase: reels + reposts (optional so older callers stay valid).
+  kind?: "post" | "reel"
+  mentions?: string[]
+  media_variants?: Record<string, Record<string, string>>
+  repost_count?: number
+}
+
+export type ReelsPage = {
+  items: Post[]
+  next_cursor: string | null
+}
+
+// A saved post (bookmark) as returned by post-svc.
+export type SavedItem = {
+  post_id: string
+  collection: string
+  created_at: string
 }
 
 export type Media = {
@@ -155,15 +172,38 @@ export type Comment = {
   comment_id: string
   author_id: string
   body: string
+  parent_id?: string | null
+  edited?: boolean
   created_at: string
 }
 
 export type Notification = {
   id: string
-  notification_type: "like" | "comment" | "follow"
+  notification_type: "like" | "comment" | "follow" | "mention" | "repost"
   payload: Record<string, string>
   read: boolean
   created_at: string
+}
+
+// --- Direct messages (messaging-svc / Cassandra) ---------------------------
+export type Conversation = {
+  conversation_id: string
+  peer_id: string
+  last_message: string
+  last_message_at: string | null
+}
+
+export type Message = {
+  message_id: string
+  sender_id: string
+  recipient_id: string
+  body: string
+  created_at: string
+}
+
+export type MessagePage = {
+  items: Message[]
+  next_cursor: string | null
 }
 
 // The realtime gateway lives at /ws (not behind the /api prefix). Prefer the

@@ -4,11 +4,14 @@ import Link from "next/link"
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react"
 import {
   IconBookmark,
+  IconBookmarkFilled,
   IconDots,
   IconHeart,
   IconHeartFilled,
   IconMessageCircle,
+  IconRepeat,
   IconSend,
+  IconTrash,
 } from "@tabler/icons-react"
 
 import {
@@ -23,9 +26,9 @@ import { usePostRealtime } from "@/lib/use-realtime"
 import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { RichText } from "@/components/rich-text"
 import {
   Drawer,
-  DrawerClose,
   DrawerContent,
   DrawerHeader,
   DrawerTitle,
@@ -115,7 +118,7 @@ export function PostCard({
   authorName,
   authorAvatar,
 }: PostCardProps) {
-  const { getToken } = useAuth()
+  const { getToken, userId } = useAuth()
   const isMobile = useIsMobile()
   const [liked, setLiked] = useState(false)
   const [likeCount, setLikeCount] = useState(0)
@@ -125,6 +128,9 @@ export function PostCard({
   const [captionExpanded, setCaptionExpanded] = useState(false)
   const [draft, setDraft] = useState("")
   const [posting, setPosting] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [reposted, setReposted] = useState(false)
+  const actionPending = useRef(false)
   const pending = useRef(false)
   const initial = authorName.charAt(0).toUpperCase()
 
@@ -226,6 +232,49 @@ export function PostCard({
     }
   }
 
+  const toggleSave = async () => {
+    if (actionPending.current) return
+    actionPending.current = true
+    const next = !saved
+    setSaved(next) // optimistic
+    try {
+      await apiFetch("/posts/saves", getToken(), {
+        method: next ? "POST" : "DELETE",
+        body: JSON.stringify({ post_id: post.post_id }),
+      })
+    } catch {
+      setSaved(!next)
+    } finally {
+      actionPending.current = false
+    }
+  }
+
+  const doRepost = async () => {
+    if (reposted) return
+    setReposted(true) // optimistic; reposts are idempotent enough for the UI
+    try {
+      const res = await apiFetch("/posts/reposts", getToken(), {
+        method: "POST",
+        body: JSON.stringify({ post_id: post.post_id }),
+      })
+      if (!res.ok) setReposted(false)
+    } catch {
+      setReposted(false)
+    }
+  }
+
+  const deleteComment = async (commentId: string) => {
+    const res = await apiFetch(
+      `/posts/${post.post_id}/comments/${commentId}`,
+      getToken(),
+      { method: "DELETE" }
+    )
+    if (res.ok || res.status === 204) {
+      setComments((prev) => prev.filter((c) => c.comment_id !== commentId))
+      setCommentCount((n) => Math.max(0, n - 1))
+    }
+  }
+
   // -----------------------------------------------------------------------
   // Caption: show only first line, with "more" to expand.
   // -----------------------------------------------------------------------
@@ -241,14 +290,34 @@ export function PostCard({
     <>
       <div className="space-y-2">
         {comments.map((c) => (
-          <p key={c.comment_id} className="text-sm">
-            <Link
-              href={`/profile/${c.author_id}`}
-              className="font-semibold hover:underline"
-            >
-              {c.authorName}
-            </Link>{" "}
-            <span>{c.body}</span>
+          <p
+            key={c.comment_id}
+            className="group flex items-start gap-1 text-sm"
+          >
+            <span className="flex-1">
+              <Link
+                href={`/profile/${c.author_id}`}
+                className="font-semibold hover:underline"
+              >
+                {c.authorName}
+              </Link>{" "}
+              <RichText text={c.body} />
+              {c.edited && (
+                <span className="ml-1 text-xs text-muted-foreground">
+                  (edited)
+                </span>
+              )}
+            </span>
+            {userId === c.author_id && (
+              <button
+                type="button"
+                onClick={() => deleteComment(c.comment_id)}
+                aria-label="Delete comment"
+                className="shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+              >
+                <IconTrash className="size-4" />
+              </button>
+            )}
           </p>
         ))}
         {comments.length === 0 && (
@@ -334,6 +403,17 @@ export function PostCard({
         >
           <IconMessageCircle className="size-6" stroke={1.8} />
         </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Repost"
+          onClick={doRepost}
+        >
+          <IconRepeat
+            className={cn("size-6", reposted && "text-green-600")}
+            stroke={1.8}
+          />
+        </Button>
         <Button variant="ghost" size="icon" aria-label="Share">
           <IconSend className="size-6" stroke={1.8} />
         </Button>
@@ -342,8 +422,13 @@ export function PostCard({
           size="icon"
           className="ml-auto"
           aria-label="Save"
+          onClick={toggleSave}
         >
-          <IconBookmark className="size-6" stroke={1.8} />
+          {saved ? (
+            <IconBookmarkFilled className="size-6" />
+          ) : (
+            <IconBookmark className="size-6" stroke={1.8} />
+          )}
         </Button>
       </div>
 
@@ -360,13 +445,19 @@ export function PostCard({
               {authorName}
             </Link>{" "}
             {captionExpanded ? (
-              <span className="whitespace-pre-line">{post.caption}</span>
+              <span className="whitespace-pre-line">
+                <RichText text={post.caption} />
+              </span>
             ) : (
               <>
                 <span>
-                  {firstLine.length > 120
-                    ? firstLine.slice(0, 120) + "…"
-                    : firstLine}
+                  <RichText
+                    text={
+                      firstLine.length > 120
+                        ? firstLine.slice(0, 120) + "…"
+                        : firstLine
+                    }
+                  />
                 </span>
                 {hasMore && (
                   <button

@@ -3,21 +3,21 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
-  IconCompass,
   IconHome,
+  IconMessageCircle,
+  IconMovie,
   IconSearch,
   IconSquareRoundedPlus,
   IconUser,
   type Icon,
 } from "@tabler/icons-react"
 
-import { cn } from "@/lib/utils"
-
 const TABS: { label: string; icon: Icon; href: string }[] = [
   { label: "Home", icon: IconHome, href: "/" },
-  { label: "Explore", icon: IconCompass, href: "/explore" },
+  { label: "Reels", icon: IconMovie, href: "/reels" },
   { label: "Create", icon: IconSquareRoundedPlus, href: "/upload" },
   { label: "Search", icon: IconSearch, href: "/search" },
+  { label: "Messages", icon: IconMessageCircle, href: "/messages" },
   { label: "Profile", icon: IconUser, href: "/profile" },
 ]
 

@@ -31,6 +31,41 @@ export function usePostRealtime(postId: string, handlers: PostHandlers) {
   }, [postId])
 }
 
+type IncomingMessage = {
+  conversation_id: string
+  message_id: string
+  sender_id: string
+  body: string
+  created_at: string
+}
+
+// Subscribe to live incoming direct messages. The handler is kept in a ref so
+// the subscription is set up once; callers get every message.sent pushed to
+// their user group by realtime-svc.
+export function useIncomingMessages(onMessage: (m: IncomingMessage) => void) {
+  const { getToken } = useAuth()
+  const ref = useRef(onMessage)
+  useEffect(() => {
+    ref.current = onMessage
+  })
+
+  useEffect(() => {
+    realtime.configure(getToken)
+    const off = realtime.onMessage((msg) => {
+      if (msg.type !== "message.sent") return
+      ref.current({
+        conversation_id: msg.conversation_id,
+        message_id: msg.message_id,
+        sender_id: msg.sender_id,
+        body: msg.body,
+        created_at: msg.created_at,
+      })
+    })
+    return off
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+}
+
 // The viewer's notification feed: initial fetch over REST, then live updates
 // pushed over the WebSocket. Used by the notifications page and the nav badge.
 export function useNotifications(enabled: boolean) {
