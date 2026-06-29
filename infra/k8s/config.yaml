@@ -11,6 +11,10 @@ data:
   POSTGRES_USER: "tinyinsta"
   POSTGRES_HOST: "postgres"
   BUS_BOOTSTRAP_SERVERS: "redpanda:9092"
+  # Bus consumer dedupe (RedisDedupeStore) + bounded retry/dead-letter routing.
+  DEDUPE_REDIS_URL: "redis://redis:6379/0"
+  BUS_MAX_ATTEMPTS: "3"
+  BUS_RETRY_BACKOFF: "0.5"
   OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
   # Issuer as seen by the browser — replace with the public Keycloak URL in a real cluster.
   OIDC_ISSUER: "http://localhost:8080/realms/tinyinsta"

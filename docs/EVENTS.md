@@ -48,13 +48,14 @@ Every message follows a common envelope:
 
 - **One topic per event type** (`post.created`, `post.liked`…). Simple to start with.
 - **One consumer group per service**: each consuming service has its own group → independent offsets, ack, replay, and multiple instances.
-- **At-least-once delivery**: a message may be received more than once → every consumer **must be idempotent** (dedupe by `event_id`, e.g. a table/Redis key of already-processed `event_id`s).
+- **At-least-once delivery**: a message may be received more than once → every consumer **must be idempotent**. The shared consumer dedupes by `event_id` against a durable, cross-replica `RedisDedupeStore` (Redis key per processed `event_id`, see `DEDUPE_REDIS_URL`), so a redelivery after a restart or across instances is skipped.
+- **Bounded retry + dead-letter**: when a handler raises, the consumer retries in-process with exponential backoff (`BUS_MAX_ATTEMPTS`, `BUS_RETRY_BACKOFF`). On exhaustion the original message is routed to a per-group dead-letter topic `dlq.<group_id>` (original bytes preserved, failure metadata in headers) and the offset is committed so one poison message can't stall the partition. A dead-lettered message is **not** marked processed, so a deliberate replay runs again. If the DLQ itself is unreachable the offset is left uncommitted (redelivered later) rather than lost.
 - **Ordering guaranteed within a partition only**: never assume ordering across different topics. If per-entity ordering matters, partition by that entity (e.g. key = `author_id`).
 - **Schemas frozen early**; Avro + Schema Registry is an option later to validate contracts at build time.
 
 ## Python client
 
-`confluent-kafka` (Redpanda-compatible). A shared `libs/bus` library exposes a producer (serializes the envelope) and a consumer (loop + ack + dedupe), so the plumbing is not rewritten in each service.
+`confluent-kafka` (Redpanda-compatible). A shared `libs/bus` library exposes a producer (serializes the envelope) and a consumer (loop + ack + dedupe + bounded retry + dead-letter), so the plumbing is not rewritten in each service.
 
 ## Example flow: creating a post
 

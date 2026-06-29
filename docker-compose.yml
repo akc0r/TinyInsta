@@ -14,6 +14,11 @@ x-svc-env: &svc-env
   POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tinyinsta}"
   POSTGRES_HOST: postgres
   BUS_BOOTSTRAP_SERVERS: redpanda:9092
+  # Durable, cross-replica consumer dedupe (RedisDedupeStore).
+  DEDUPE_REDIS_URL: "${DEDUPE_REDIS_URL:-redis://redis:6379/0}"
+  # Bounded retry + dead-letter routing for event consumers.
+  BUS_MAX_ATTEMPTS: "${BUS_MAX_ATTEMPTS:-3}"
+  BUS_RETRY_BACKOFF: "${BUS_RETRY_BACKOFF:-0.5}"
   OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
   OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8080/realms/tinyinsta}"
   OIDC_AUDIENCE: "${OIDC_AUDIENCE:-}"
@@ -103,7 +108,10 @@ services:
         user.close_friend_added user.close_friend_removed
         post.created post.commented post.deleted post.liked post.unliked
         media.uploaded media.processed
-        story.created story.viewed || true
+        story.created story.viewed
+        dlq.post-svc dlq.usertimeline-svc dlq.search-svc
+        dlq.hometimeline-svc dlq.realtime-svc dlq.stories-svc
+        dlq.media-worker || true
     restart: "no"
 
   keycloak:
