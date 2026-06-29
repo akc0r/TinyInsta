@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from django.core.management.base import BaseCommand
-from tinyinsta.bus import Consumer
+from tinyinsta.bus import Consumer, redis_dedupe_store
 from tinyinsta.events import Envelope, types
 
 from timeline import store
@@ -21,7 +21,11 @@ class Command(BaseCommand):
     GROUP_ID = "usertimeline-svc"
 
     def handle(self, *args, **options):
-        consumer = Consumer(topics=self.TOPICS, group_id=self.GROUP_ID)
+        consumer = Consumer(
+            topics=self.TOPICS,
+            group_id=self.GROUP_ID,
+            dedupe=redis_dedupe_store(self.GROUP_ID),
+        )
         self.stdout.write(f"Consuming {self.TOPICS} as group {self.GROUP_ID}")
         consumer.run(self._dispatch)
 

@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from tinyinsta.bus import Consumer
+from tinyinsta.bus import Consumer, redis_dedupe_store
 from tinyinsta.events import Envelope, types
 
 from search import index
@@ -11,7 +11,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         index.ensure_indices()
-        consumer = Consumer(topics=self.TOPICS, group_id=self.GROUP_ID)
+        consumer = Consumer(
+            topics=self.TOPICS,
+            group_id=self.GROUP_ID,
+            dedupe=redis_dedupe_store(self.GROUP_ID),
+        )
         self.stdout.write(f"Consuming {self.TOPICS} as group {self.GROUP_ID}")
         consumer.run(self._dispatch)
 

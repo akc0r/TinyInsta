@@ -1,7 +1,7 @@
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.core.management.base import BaseCommand
-from tinyinsta.bus import Consumer
+from tinyinsta.bus import Consumer, redis_dedupe_store
 from tinyinsta.events import Envelope, types
 
 from realtime.consumers import post_group, user_group
@@ -20,7 +20,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         self.layer = get_channel_layer()
-        consumer = Consumer(topics=self.TOPICS, group_id=self.GROUP_ID)
+        consumer = Consumer(
+            topics=self.TOPICS,
+            group_id=self.GROUP_ID,
+            dedupe=redis_dedupe_store(self.GROUP_ID),
+        )
         self.stdout.write(f"Consuming {self.TOPICS} as group {self.GROUP_ID}")
         consumer.run(self._dispatch)
 

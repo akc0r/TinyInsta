@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from tinyinsta.bus import Consumer
+from tinyinsta.bus import Consumer, redis_dedupe_store
 from tinyinsta.events import Envelope, types
 
 from posts.mongo import posts_collection
@@ -10,7 +10,11 @@ class Command(BaseCommand):
     GROUP_ID = "post-svc"
 
     def handle(self, *args, **options):
-        consumer = Consumer(topics=self.TOPICS, group_id=self.GROUP_ID)
+        consumer = Consumer(
+            topics=self.TOPICS,
+            group_id=self.GROUP_ID,
+            dedupe=redis_dedupe_store(self.GROUP_ID),
+        )
         consumer.run(self._dispatch)
 
     def _dispatch(self, envelope: Envelope) -> None:

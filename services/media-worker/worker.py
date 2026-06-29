@@ -4,7 +4,7 @@ import logging
 
 import mongo
 from processors import images, videos
-from tinyinsta.bus import Consumer, Producer
+from tinyinsta.bus import Consumer, Producer, redis_dedupe_store
 from tinyinsta.events import Envelope, types
 
 logging.basicConfig(level="INFO")
@@ -46,7 +46,11 @@ def handle(envelope: Envelope) -> None:
 
 
 def main() -> None:
-    consumer = Consumer(topics=[types.MEDIA_UPLOADED], group_id=GROUP_ID)
+    consumer = Consumer(
+        topics=[types.MEDIA_UPLOADED],
+        group_id=GROUP_ID,
+        dedupe=redis_dedupe_store(GROUP_ID),
+    )
     consumer.run(handle)
 
 
