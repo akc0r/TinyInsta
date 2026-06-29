@@ -1,16 +1,26 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from tinyinsta.bus.config import BusConfig
+from tinyinsta.events import registry
 from tinyinsta.events.envelope import Envelope
 from tinyinsta.observability.context import get_correlation_id, new_correlation_id
 
 
 class Producer:
-    def __init__(self, config: BusConfig | None = None) -> None:
+    def __init__(self, config: BusConfig | None = None, *, validate: bool | None = None) -> None:
         self._config = config or BusConfig.from_env()
         self._producer = None
+        # Validate every payload against its registered contract before it goes
+        # on the wire (catches a contract breach at the source). Off via
+        # BUS_VALIDATE=0 for e.g. a deliberate malformed-event test.
+        self._validate = (
+            validate
+            if validate is not None
+            else os.environ.get("BUS_VALIDATE", "1") not in ("0", "false", "False")
+        )
 
     def _ensure(self):
         if self._producer is None:
@@ -32,16 +42,24 @@ class Producer:
         *,
         key: str | None = None,
         version: int = 1,
+        event_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> Envelope:
+        if self._validate:
+            registry.validate(event_type, data)
         # Stamp the ambient trace (set by the HTTP middleware or an upstream
         # consumer) so the event stays correlated; mint one if published outside
-        # any request context.
+        # any request context. `event_id`/`correlation_id` can be supplied so a
+        # relay (e.g. the transactional outbox) re-publishes the *same* identity
+        # it persisted — redeliveries then dedupe correctly downstream.
         envelope = Envelope(
             type=event_type,
             data=data,
             version=version,
-            correlation_id=get_correlation_id() or new_correlation_id(),
+            correlation_id=correlation_id or get_correlation_id() or new_correlation_id(),
         )
+        if event_id is not None:
+            envelope.event_id = event_id
         producer = self._ensure()
         producer.produce(
             topic=event_type,
