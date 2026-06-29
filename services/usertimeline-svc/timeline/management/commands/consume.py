@@ -17,7 +17,12 @@ def _epoch(value) -> float:
 
 
 class Command(BaseCommand):
-    TOPICS = [types.POST_CREATED, types.POST_DELETED]
+    TOPICS = [
+        types.POST_CREATED,
+        types.POST_DELETED,
+        types.POST_REPOSTED,
+        types.POST_UNREPOSTED,
+    ]
     GROUP_ID = "usertimeline-svc"
 
     def handle(self, *args, **options):
@@ -37,3 +42,9 @@ class Command(BaseCommand):
             )
         elif envelope.type == types.POST_DELETED:
             store.remove_post(data["author_id"], data["post_id"])
+        elif envelope.type == types.POST_REPOSTED:
+            # A repost surfaces the original post on the reposter's profile grid,
+            # timestamped at the repost so it sorts as a fresh entry.
+            store.add_post(data["user_id"], data["post_id"], _epoch(data.get("created_at")))
+        elif envelope.type == types.POST_UNREPOSTED:
+            store.remove_post(data["user_id"], data["post_id"])

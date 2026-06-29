@@ -20,6 +20,8 @@ class Command(BaseCommand):
     TOPICS = [
         types.POST_CREATED,
         types.POST_DELETED,
+        types.POST_REPOSTED,
+        types.POST_UNREPOSTED,
         types.USER_FOLLOWED,
         types.USER_UNFOLLOWED,
     ]
@@ -38,6 +40,8 @@ class Command(BaseCommand):
         handlers = {
             types.POST_CREATED: self._on_post_created,
             types.POST_DELETED: self._on_post_deleted,
+            types.POST_REPOSTED: self._on_post_reposted,
+            types.POST_UNREPOSTED: self._on_post_unreposted,
             types.USER_FOLLOWED: self._on_user_followed,
             types.USER_UNFOLLOWED: self._on_user_unfollowed,
         }
@@ -62,6 +66,19 @@ class Command(BaseCommand):
         targets = store.followers_of(author_id) + [author_id]
         store.remove_post(targets, data["post_id"])
 
+    def _on_post_reposted(self, data: dict) -> None:
+        # Fan the original post out to the reposter's followers (and the reposter),
+        # timestamped at the repost so it lands as a fresh entry.
+        reposter = data["user_id"]
+        ts = _epoch(data.get("created_at"))
+        targets = store.followers_of(reposter) + [reposter]
+        store.fan_out(targets, data["post_id"], ts)
+
+    def _on_post_unreposted(self, data: dict) -> None:
+        reposter = data["user_id"]
+        targets = store.followers_of(reposter) + [reposter]
+        store.remove_post(targets, data["post_id"])
+
     def _on_user_followed(self, data: dict) -> None:
         follower_id, followee_id = data["follower_id"], data["followee_id"]
         store.add_follower(followee_id, follower_id)
@@ -79,4 +96,6 @@ class Command(BaseCommand):
         follower_id, followee_id = data["follower_id"], data["followee_id"]
         store.remove_follower(followee_id, follower_id)
         store.remove_following(follower_id, followee_id)
+        # An account that drops back under the threshold returns to push fan-out.
+        store.demote_if_below(followee_id)
         store.purge(follower_id, followee_id)

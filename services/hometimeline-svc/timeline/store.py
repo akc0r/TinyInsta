@@ -1,12 +1,36 @@
 from functools import lru_cache
 
 from django.conf import settings
+from prometheus_client import Counter, Histogram
 
 from timeline import clients
 
 # A home timeline is capped to its most recent entries: a feed nobody scrolls to
 # the bottom of doesn't need unbounded history, and the cap bounds Redis memory.
 MAX_HOME = 1000
+
+# --- Fan-out observability --------------------------------------------------
+# Surfaced on /metrics → Grafana: how wide and how slow each write-time fan-out
+# is (the cost the hybrid celebrity path exists to cap), plus how often the
+# read-time celebrity pull fires.
+FANOUT_TARGETS = Histogram(
+    "hometimeline_fanout_targets",
+    "Number of home timelines a single post was fanned out to",
+    buckets=(1, 5, 10, 50, 100, 500, 1000, 5000),
+)
+FANOUT_SECONDS = Histogram(
+    "hometimeline_fanout_seconds", "Wall-clock duration of a write-time fan-out"
+)
+CELEB_PULLS = Counter(
+    "hometimeline_celebrity_pulls_total",
+    "Read-time pulls of a celebrity's posts merged into a home page",
+)
+CELEB_PROMOTIONS = Counter(
+    "hometimeline_celebrity_promotions_total", "Accounts promoted to celebrity"
+)
+CELEB_DEMOTIONS = Counter(
+    "hometimeline_celebrity_demotions_total", "Accounts demoted from celebrity"
+)
 
 
 @lru_cache(maxsize=1)
@@ -68,7 +92,21 @@ def is_celebrity(author_id: str) -> bool:
 
 
 def mark_celebrity(author_id: str) -> None:
-    get_redis().sadd(CELEBRITIES_KEY, author_id)
+    # sadd returns 1 only on the first add → count a promotion once.
+    if get_redis().sadd(CELEBRITIES_KEY, author_id):
+        CELEB_PROMOTIONS.inc()
+
+
+def demote_if_below(author_id: str) -> None:
+    """Drop an account back to push fan-out once it falls under the threshold.
+
+    Without this, a previously-celebrity account that loses followers would stay
+    in the pull set forever (read-time cost it no longer warrants, and its new
+    posts would never be pushed to its followers). Called on unfollow.
+    """
+    if get_redis().scard(followers_key(author_id)) < settings.CELEBRITY_FOLLOWER_THRESHOLD:
+        if get_redis().srem(CELEBRITIES_KEY, author_id):
+            CELEB_DEMOTIONS.inc()
 
 
 def celebs_followed(follower_id: str) -> list[str]:
@@ -86,12 +124,14 @@ def fan_out(target_ids: list[str], post_id: str, ts: float) -> None:
     """Push a post into each target's home timeline (followers + the author)."""
     if not target_ids:
         return
-    pipe = get_redis().pipeline()
-    for user_id in target_ids:
-        key = home_key(user_id)
-        pipe.zadd(key, {post_id: ts})
-        _trim(pipe, key)
-    pipe.execute()
+    FANOUT_TARGETS.observe(len(target_ids))
+    with FANOUT_SECONDS.time():
+        pipe = get_redis().pipeline()
+        for user_id in target_ids:
+            key = home_key(user_id)
+            pipe.zadd(key, {post_id: ts})
+            _trim(pipe, key)
+        pipe.execute()
 
 
 def remove_post(target_ids: list[str], post_id: str) -> None:
@@ -155,12 +195,24 @@ def page(user_id: str, cursor: str | None, limit: int = 20) -> dict:
     # 2. Pull entries: recent posts of each celebrity followed, merged in.
     #    (Deep pagination beyond a celebrity's recent window is best-effort.)
     for celeb_id in celebs_followed(user_id):
+        CELEB_PULLS.inc()
         for post_id, score in clients.recent_posts(celeb_id):
             if max_cursor is None or score < max_cursor:
                 candidates[post_id] = score
 
-    # 3. Merge by score desc, take the page.
+    # 3. Merge by score (timestamp) desc, take the page. The cursor stays
+    #    chronological so keyset pagination remains stable across pages.
     merged = sorted(candidates.items(), key=lambda kv: kv[1], reverse=True)[:limit]
     items = [post_id for post_id, _ in merged]
     next_cursor = merged[-1][1] if len(merged) == limit else None
+
+    # 4. Optional algorithmic re-rank *within* the page: ranking-svc reorders the
+    #    page's posts by recency⊕engagement⊕affinity. Pagination remains keyset by
+    #    timestamp (next_cursor unchanged); only intra-page order is affected. If
+    #    ranking is off/unreachable the chronological order stands.
+    ranked = clients.rank(user_id, items)
+    if ranked:
+        in_page = set(items)
+        items = [pid for pid in ranked if pid in in_page]
+
     return {"items": items, "next_cursor": next_cursor}
