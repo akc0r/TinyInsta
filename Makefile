@@ -50,6 +50,10 @@ clean: ## Stop everything AND remove volumes (destroys data)
 config: ## Validate the docker-compose configuration
 	$(COMPOSE) --profile infra --profile apps config -q && echo "compose OK"
 
+.PHONY: test
+test: ## Run the Python test suite (fan-out unit + e2e; needs no running infra)
+	cd services/hometimeline-svc && pytest -q
+
 # --- Frontend ---------------------------------------------------------------
 .PHONY: front
 front: ## Run the Next.js frontend in dev mode

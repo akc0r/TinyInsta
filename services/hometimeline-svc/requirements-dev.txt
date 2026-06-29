@@ -1,0 +1,5 @@
+# Test-only deps for the fan-out suite (not installed in the service image).
+-r requirements.txt
+pytest>=8.3
+pytest-django>=4.9
+fakeredis>=2.25          # in-memory Redis so tests need no running infra

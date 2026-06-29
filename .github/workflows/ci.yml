@@ -19,6 +19,21 @@ jobs:
         with:
           args: check --output-format=github
 
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install hometimeline-svc + test deps
+        run: |
+          pip install -e "libs[django]"
+          pip install -r services/hometimeline-svc/requirements-dev.txt
+      - name: Run fan-out test suite
+        working-directory: services/hometimeline-svc
+        run: pytest -q
+
   lint-frontend:
     runs-on: ubuntu-latest
     defaults:
