@@ -81,6 +81,25 @@ async function resolveUsername(
 }
 
 // ---------------------------------------------------------------------------
+// The viewer's set of saved post ids, loaded once and shared across all cards
+// so the bookmark reflects what's persisted. Mutated in place on save/unsave.
+// ---------------------------------------------------------------------------
+let savedSetPromise: Promise<Set<string>> | null = null
+
+function loadSavedSet(token: string | undefined): Promise<Set<string>> {
+  if (!savedSetPromise) {
+    savedSetPromise = apiFetch("/posts/saves", token)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then(
+        (d: { items: { post_id: string }[] }) =>
+          new Set(d.items.map((s) => s.post_id))
+      )
+      .catch(() => new Set<string>())
+  }
+  return savedSetPromise
+}
+
+// ---------------------------------------------------------------------------
 // Hook: useIsMobile  –  true when viewport width < 640px (sm breakpoint).
 // ---------------------------------------------------------------------------
 function useIsMobile() {
@@ -130,7 +149,10 @@ export function PostCard({
   const [posting, setPosting] = useState(false)
   const [saved, setSaved] = useState(false)
   const [reposted, setReposted] = useState(false)
+  const [repostId, setRepostId] = useState<string | null>(null)
+  const [repostCount, setRepostCount] = useState(post.repost_count ?? 0)
   const actionPending = useRef(false)
+  const repostPending = useRef(false)
   const pending = useRef(false)
   const initial = authorName.charAt(0).toUpperCase()
 
@@ -144,6 +166,18 @@ export function PostCard({
         setLiked(data.liked)
       })
       .catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [post.post_id])
+
+  // Initial bookmark state, from the viewer's shared saved set.
+  useEffect(() => {
+    let active = true
+    loadSavedSet(getToken()).then((set) => {
+      if (active) setSaved(set.has(post.post_id))
+    })
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.post_id])
 
@@ -237,29 +271,51 @@ export function PostCard({
     actionPending.current = true
     const next = !saved
     setSaved(next) // optimistic
+    const set = await loadSavedSet(getToken())
+    if (next) set.add(post.post_id)
+    else set.delete(post.post_id)
     try {
-      await apiFetch("/posts/saves", getToken(), {
+      const res = await apiFetch("/posts/saves", getToken(), {
         method: next ? "POST" : "DELETE",
         body: JSON.stringify({ post_id: post.post_id }),
       })
+      if (!res.ok && res.status !== 204) throw new Error()
     } catch {
       setSaved(!next)
+      if (next) set.delete(post.post_id)
+      else set.add(post.post_id)
     } finally {
       actionPending.current = false
     }
   }
 
-  const doRepost = async () => {
-    if (reposted) return
-    setReposted(true) // optimistic; reposts are idempotent enough for the UI
+  const toggleRepost = async () => {
+    if (repostPending.current) return
+    repostPending.current = true
+    const next = !reposted
+    setReposted(next) // optimistic
+    setRepostCount((n) => Math.max(0, n + (next ? 1 : -1)))
     try {
-      const res = await apiFetch("/posts/reposts", getToken(), {
-        method: "POST",
-        body: JSON.stringify({ post_id: post.post_id }),
-      })
-      if (!res.ok) setReposted(false)
+      if (next) {
+        const res = await apiFetch("/posts/reposts", getToken(), {
+          method: "POST",
+          body: JSON.stringify({ post_id: post.post_id }),
+        })
+        if (!res.ok) throw new Error()
+        const data: { repost_id: string } = await res.json()
+        setRepostId(data.repost_id)
+      } else if (repostId) {
+        const res = await apiFetch(`/posts/reposts/${repostId}`, getToken(), {
+          method: "DELETE",
+        })
+        if (!res.ok && res.status !== 204) throw new Error()
+        setRepostId(null)
+      }
     } catch {
-      setReposted(false)
+      setReposted(!next)
+      setRepostCount((n) => Math.max(0, n + (next ? -1 : 1)))
+    } finally {
+      repostPending.current = false
     }
   }
 
@@ -407,13 +463,18 @@ export function PostCard({
           variant="ghost"
           size="icon"
           aria-label="Repost"
-          onClick={doRepost}
+          onClick={toggleRepost}
         >
           <IconRepeat
             className={cn("size-6", reposted && "text-green-600")}
             stroke={1.8}
           />
         </Button>
+        {repostCount > 0 && (
+          <span className="-ml-1 text-sm text-muted-foreground">
+            {repostCount}
+          </span>
+        )}
         <Button variant="ghost" size="icon" aria-label="Share">
           <IconSend className="size-6" stroke={1.8} />
         </Button>

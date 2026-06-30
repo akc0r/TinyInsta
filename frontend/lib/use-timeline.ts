@@ -42,6 +42,15 @@ export async function hydratePostIds(
   const { items: posts }: { items: Post[] } = await postsRes.json()
   const rank = new Map(ids.map((id, i) => [id, i]))
   posts.sort((a, b) => (rank.get(a.post_id) ?? 0) - (rank.get(b.post_id) ?? 0))
+  return hydratePosts(posts, token)
+}
+
+// Resolve each post's first media to a displayable cell, preserving order. Used
+// when the caller already holds the full posts (e.g. the tagged grid).
+export async function hydratePosts(
+  posts: Post[],
+  token: string | undefined
+): Promise<HydratedPost[]> {
   return Promise.all(
     posts.map(async (post) => ({
       post,

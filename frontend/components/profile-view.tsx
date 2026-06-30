@@ -13,9 +13,16 @@ import {
   IconUserSquareRounded,
 } from "@tabler/icons-react"
 
-import { apiFetch, type Profile } from "@/lib/api"
+import { apiFetch, type Post, type Profile } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
-import { useInfiniteScroll, useTimeline } from "@/lib/use-timeline"
+import {
+  hydratePostIds,
+  hydratePosts,
+  type HydratedPost,
+  useInfiniteScroll,
+  useTimeline,
+} from "@/lib/use-timeline"
+import { cn } from "@/lib/utils"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -46,6 +53,11 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
   const [closeFriend, setCloseFriend] = useState(false)
   const [actionPending, setActionPending] = useState(false)
 
+  const [tab, setTab] = useState<"posts" | "saved" | "tagged">("posts")
+  const [savedCells, setSavedCells] = useState<HydratedPost[] | null>(null)
+  const [taggedCells, setTaggedCells] = useState<HydratedPost[] | null>(null)
+  const [tabLoading, setTabLoading] = useState(false)
+
   const {
     cells,
     loading: gridLoading,
@@ -61,6 +73,9 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true)
     setNotFound(false)
+    setTab("posts")
+    setSavedCells(null)
+    setTaggedCells(null)
     apiFetch(isMe ? "/users/me" : `/users/${targetId}`, getToken())
       .then((r) => {
         if (r.status === 404) {
@@ -149,6 +164,42 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
       setActionPending(false)
     }
   }
+
+  // Lazy-load the Saved / Tagged grids the first time their tab is opened.
+  useEffect(() => {
+    if (!profile) return
+    const token = getToken()
+    if (tab === "saved" && isMe && savedCells === null) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setTabLoading(true)
+      apiFetch("/posts/saves", token)
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then(async (d: { items: { post_id: string }[] }) =>
+          setSavedCells(
+            await hydratePostIds(
+              d.items.map((s) => s.post_id),
+              token
+            )
+          )
+        )
+        .catch(() => setSavedCells([]))
+        .finally(() => setTabLoading(false))
+    }
+    if (tab === "tagged" && taggedCells === null) {
+      setTabLoading(true)
+      apiFetch(
+        `/posts/tagged?username=${encodeURIComponent(profile.username)}`,
+        token
+      )
+        .then((r) => (r.ok ? r.json() : { items: [] }))
+        .then(async (d: { items: Post[] }) =>
+          setTaggedCells(await hydratePosts(d.items, token))
+        )
+        .catch(() => setTaggedCells([]))
+        .finally(() => setTabLoading(false))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, profile])
 
   if (!ready || (authenticated && loading)) return <ProfileSkeleton />
 
@@ -324,37 +375,123 @@ export function ProfileView({ userId: propUserId }: { userId?: string }) {
 
       <Separator className="mt-8" />
       <div className="flex justify-center">
-        <span className="-mt-px flex items-center gap-1.5 border-t border-foreground py-3 text-xs font-semibold tracking-wide text-foreground uppercase">
-          <IconLayoutGrid className="size-3.5" /> Posts
-        </span>
-        <span className="flex items-center gap-1.5 px-8 py-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          <IconBookmark className="size-3.5" /> Saved
-        </span>
-        <span className="flex items-center gap-1.5 py-3 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-          <IconUserSquareRounded className="size-3.5" /> Tagged
-        </span>
+        <TabButton
+          active={tab === "posts"}
+          onClick={() => setTab("posts")}
+          icon={IconLayoutGrid}
+          label="Posts"
+        />
+        {isMe && (
+          <TabButton
+            active={tab === "saved"}
+            onClick={() => setTab("saved")}
+            icon={IconBookmark}
+            label="Saved"
+          />
+        )}
+        <TabButton
+          active={tab === "tagged"}
+          onClick={() => setTab("tagged")}
+          icon={IconUserSquareRounded}
+          label="Tagged"
+        />
       </div>
 
-      <div className="mt-1">
-        <PostGrid cells={cells} />
-      </div>
+      {tab === "posts" && (
+        <>
+          <div className="mt-1">
+            <PostGrid cells={cells} />
+          </div>
+          {gridLoading && (
+            <div className="mt-1 grid grid-cols-3 gap-1">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="aspect-square rounded-none" />
+              ))}
+            </div>
+          )}
+          {cells.length === 0 && done && !error && (
+            <p className="py-12 text-center text-sm text-muted-foreground">
+              No posts yet.
+            </p>
+          )}
+          {error && (
+            <p className="py-4 text-center text-sm text-destructive">{error}</p>
+          )}
+          <div ref={sentinel} className="h-px" />
+        </>
+      )}
 
-      {gridLoading && (
-        <div className="mt-1 grid grid-cols-3 gap-1">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="aspect-square rounded-none" />
-          ))}
-        </div>
+      {tab === "saved" && (
+        <TabGrid
+          cells={savedCells}
+          loading={tabLoading}
+          empty="No saved posts yet."
+        />
       )}
-      {cells.length === 0 && done && !error && (
-        <p className="py-12 text-center text-sm text-muted-foreground">
-          No posts yet.
-        </p>
+      {tab === "tagged" && (
+        <TabGrid
+          cells={taggedCells}
+          loading={tabLoading}
+          empty="No tagged posts yet."
+        />
       )}
-      {error && (
-        <p className="py-4 text-center text-sm text-destructive">{error}</p>
+    </div>
+  )
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean
+  onClick: () => void
+  icon: typeof IconLayoutGrid
+  label: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "-mt-px flex items-center gap-1.5 px-8 py-3 text-xs font-semibold tracking-wide uppercase",
+        active
+          ? "border-t border-foreground text-foreground"
+          : "text-muted-foreground"
       )}
-      <div ref={sentinel} className="h-px" />
+    >
+      <Icon className="size-3.5" /> {label}
+    </button>
+  )
+}
+
+function TabGrid({
+  cells,
+  loading,
+  empty,
+}: {
+  cells: HydratedPost[] | null
+  loading: boolean
+  empty: string
+}) {
+  if (loading || cells === null) {
+    return (
+      <div className="mt-1 grid grid-cols-3 gap-1">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="aspect-square rounded-none" />
+        ))}
+      </div>
+    )
+  }
+  if (cells.length === 0) {
+    return (
+      <p className="py-12 text-center text-sm text-muted-foreground">{empty}</p>
+    )
+  }
+  return (
+    <div className="mt-1">
+      <PostGrid cells={cells} />
     </div>
   )
 }
