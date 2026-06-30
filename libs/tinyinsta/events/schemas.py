@@ -105,11 +105,10 @@ class PostUnsaved:
 
 @dataclass(slots=True)
 class PostReposted:
-    # A repost is a new timeline entry pointing back at the original post.
     repost_id: str
     post_id: str  # the original post
     user_id: str  # the reposter
-    author_id: str  # the original author (carried so consumers avoid a sync call)
+    author_id: str  # the original author
     created_at: str = ""
 
 
@@ -122,12 +121,8 @@ class PostUnreposted:
 
 @dataclass(slots=True)
 class UserMentioned:
-    # Emitted when @username appears in a caption or comment. post-svc does not
-    # own the username→id mapping (golden rule), so it ships the raw username;
-    # realtime-svc resolves it against its user.created projection and raises a
-    # notification. The source (post/comment) travels so the notif can deep-link.
     username: str
-    actor_id: str  # who wrote the mention
+    actor_id: str
     source_type: str  # "post" | "comment"
     source_id: str  # post_id or comment_id
     post_id: str = ""

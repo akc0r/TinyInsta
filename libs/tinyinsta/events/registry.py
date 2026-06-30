@@ -1,16 +1,7 @@
 """Contract registry for bus events.
 
-Every event ``type`` is mapped to its payload dataclass (the contract). The
-producer validates a payload against the registered schema *before* it goes on
-the wire, and the consumer can validate on the way in — so a contract breach is
-caught at the boundary instead of corrupting a downstream read model.
-
-This is the lightweight, in-process form of a Schema Registry: the schemas live
-in code and are validated structurally (required fields present, no unknown
-fields, JSON-serialisable types). The binary-Avro upgrade — registering these
-same schemas in a Confluent/Redpanda Schema Registry and serialising the
-``data`` block as Avro instead of JSON — is a drop-in evolution of this module
-(see ``docs/EVENTS.md``); the contract source of truth stays here either way.
+Maps every event ``type`` to its payload dataclass (the contract) and validates
+a payload against it structurally: required fields present, no unknown fields.
 """
 
 from __future__ import annotations
@@ -25,8 +16,7 @@ class ContractError(ValueError):
     """Raised when an event payload does not match its registered schema."""
 
 
-# type string -> payload dataclass. The single source of truth for who carries
-# what; mirrored in docs/EVENTS.md.
+# Maps each event type to its payload dataclass.
 REGISTRY: dict[str, type] = {
     types.USER_CREATED: schemas.UserCreated,
     types.USER_FOLLOWED: schemas.UserFollowed,
@@ -62,9 +52,7 @@ def schema_for(event_type: str) -> type | None:
 def assert_complete() -> None:
     """Fail if the catalog (``types.ALL``) and the schema registry diverge.
 
-    Run in CI as a build-time contract gate: a new event type that ships without
-    a registered payload schema (or vice versa) breaks the build instead of only
-    surfacing at runtime when something publishes it.
+    Run in CI as a build-time contract gate.
     """
     declared = set(types.ALL)
     registered = set(REGISTRY)
@@ -96,8 +84,7 @@ def validate(event_type: str, data: dict[str, Any]) -> None:
     """Validate ``data`` against the schema registered for ``event_type``.
 
     Raises ``ContractError`` on an unknown type, a missing required field, or an
-    unexpected field. Unknown types are rejected so a typo in a producer can't
-    silently publish an event no consumer will ever recognise.
+    unexpected field.
     """
     schema = REGISTRY.get(event_type)
     if schema is None:

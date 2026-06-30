@@ -13,9 +13,7 @@ class Producer:
     def __init__(self, config: BusConfig | None = None, *, validate: bool | None = None) -> None:
         self._config = config or BusConfig.from_env()
         self._producer = None
-        # Validate every payload against its registered contract before it goes
-        # on the wire (catches a contract breach at the source). Off via
-        # BUS_VALIDATE=0 for e.g. a deliberate malformed-event test.
+        # Validate payloads against their registered contract; off via BUS_VALIDATE=0.
         self._validate = (
             validate
             if validate is not None
@@ -47,11 +45,6 @@ class Producer:
     ) -> Envelope:
         if self._validate:
             registry.validate(event_type, data)
-        # Stamp the ambient trace (set by the HTTP middleware or an upstream
-        # consumer) so the event stays correlated; mint one if published outside
-        # any request context. `event_id`/`correlation_id` can be supplied so a
-        # relay (e.g. the transactional outbox) re-publishes the *same* identity
-        # it persisted — redeliveries then dedupe correctly downstream.
         envelope = Envelope(
             type=event_type,
             data=data,

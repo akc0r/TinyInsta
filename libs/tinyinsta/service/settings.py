@@ -47,8 +47,7 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "UNAUTHENTICATED_USER": None,
-    # Per-user anti-abuse limit (Redis fixed window), on top of Traefik's per-IP
-    # gateway limit. Fail-open; tune via RATELIMIT_USER_RATE / RATELIMIT_ENABLED.
+    # Per-user rate limit; tune via RATELIMIT_USER_RATE / RATELIMIT_ENABLED.
     "DEFAULT_THROTTLE_CLASSES": [
         "tinyinsta.service.throttling.UserRateThrottle",
     ],

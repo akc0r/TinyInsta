@@ -1,12 +1,7 @@
-"""Per-user rate limiting (anti-abuse), shared across services.
+"""Per-user rate limiting, shared across services.
 
-Traefik already rate-limits per client IP at the gateway; this adds a per-**user**
-limit so one authenticated account can't hammer the API from many IPs (or behind
-a NAT where IP limiting is too coarse). It is a Redis fixed-window counter keyed
-by the Keycloak user id, so the limit holds across service replicas.
-
-Fail-open: if Redis is unreachable the request is allowed rather than the API
-going dark on a cache blip — availability over a best-effort abuse control.
+A Redis fixed-window counter keyed by the Keycloak user id. Fail-open: a request
+is allowed if Redis is unreachable.
 """
 
 from __future__ import annotations
@@ -46,10 +41,9 @@ class UserRateThrottle(BaseThrottle):
         user = getattr(request, "user", None)
         user_id = getattr(user, "user_id", None)
         if not user_id:
-            return True  # unauthenticated endpoints (docs/health) — IP limiting covers these
+            return True
 
         limit, window = _parse_rate(os.environ.get("RATELIMIT_USER_RATE", "120/min"))
-        # Bucket key rotates with the window so the counter resets automatically.
         import time
 
         bucket = int(time.time()) // window
@@ -60,11 +54,11 @@ class UserRateThrottle(BaseThrottle):
             pipe.incr(key)
             pipe.expire(key, window)
             current = pipe.execute()[0]
-        except Exception:  # noqa: BLE001 — fail-open on Redis trouble
+        except Exception:  # noqa: BLE001
             logger.warning("ratelimit: redis unavailable, allowing", exc_info=True)
             return True
         self._wait = window
         return current <= limit
 
-    def wait(self):  # noqa: D102 — DRF asks how long until retry
+    def wait(self):  # noqa: D102
         return getattr(self, "_wait", None)
