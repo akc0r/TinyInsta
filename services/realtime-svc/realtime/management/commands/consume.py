@@ -104,15 +104,13 @@ class Command(BaseCommand):
         )
 
     def _on_user_created(self, data: dict) -> None:
-        # Maintain the username→id projection used to resolve @mentions.
+        # username→id projection used to resolve @mentions.
         UserHandle.objects.update_or_create(
             user_id=data["user_id"], defaults={"username": data["username"].lower()}
         )
 
     def _on_mention(self, data: dict) -> None:
-        # Resolve the raw @username to a user via the local projection; skip if we
-        # haven't seen that user.created yet (the mention is simply not delivered —
-        # acceptable, and replayable once the projection catches up).
+        # Resolve the raw @username via the local projection; skip if unknown.
         handle = UserHandle.objects.filter(username=data["username"].lower()).first()
         if handle is None or str(handle.user_id) == data.get("actor_id"):
             return
@@ -128,7 +126,7 @@ class Command(BaseCommand):
         )
 
     def _on_repost(self, data: dict) -> None:
-        # Notify the original author that someone reposted them (not self-reposts).
+        # Notify the original author (not self-reposts).
         author, reposter = data.get("author_id"), data.get("user_id")
         if author and author != reposter:
             self._notify(
@@ -138,9 +136,7 @@ class Command(BaseCommand):
             )
 
     def _on_message(self, data: dict) -> None:
-        # Push a new DM live to the recipient's socket (the sender already has it
-        # from the POST response). messaging-svc owns persistence; realtime-svc is
-        # only the delivery hub, so no notification row is written here.
+        # Push a new DM live to the recipient's socket.
         recipient = data.get("recipient_id")
         if recipient:
             self._send(

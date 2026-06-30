@@ -12,10 +12,7 @@ class Score(APIView):
     POST { "viewer_id": "...", "items": ["post_id", ...] }
       → { "scores": {post_id: float}, "ranked": [post_id sorted desc] }
 
-    Internal read model, called server-to-server by hometimeline-svc at feed-read
-    time (no user JWT, like usertimeline-svc) — so it carries no Traefik route and
-    is AllowAny. If this service is down hometimeline falls back to chronological,
-    so ranking is an enhancement, never a hard dependency of the feed.
+    Internal endpoint (no Traefik route), called server-to-server by hometimeline-svc.
     """
 
     permission_classes = [AllowAny]

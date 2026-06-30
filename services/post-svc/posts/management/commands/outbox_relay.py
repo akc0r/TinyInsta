@@ -23,7 +23,6 @@ class Command(BaseCommand):
         self.stdout.write("Outbox relay started")
         while True:
             published = self._drain(producer, batch)
-            # Only sleep when idle; under load we keep draining back-to-back.
             if published == 0:
                 time.sleep(interval)
 
@@ -32,8 +31,6 @@ class Command(BaseCommand):
         count = 0
         for entry in pending:
             try:
-                # Re-publish the persisted event_id so a redelivery after a crash
-                # dedupes downstream instead of duplicating the side effect.
                 producer.publish(
                     entry["type"],
                     entry["data"],
@@ -43,7 +40,7 @@ class Command(BaseCommand):
                 producer.flush()
                 outbox.mark_published(entry["_id"])
                 count += 1
-            except Exception:  # noqa: BLE001 — leave pending, retry next pass
+            except Exception:  # noqa: BLE001
                 logger.warning("outbox: publish failed for %s", entry["_id"], exc_info=True)
                 break
         return count

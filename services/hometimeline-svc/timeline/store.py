@@ -10,9 +10,7 @@ from timeline import clients
 MAX_HOME = 1000
 
 # --- Fan-out observability --------------------------------------------------
-# Surfaced on /metrics → Grafana: how wide and how slow each write-time fan-out
-# is (the cost the hybrid celebrity path exists to cap), plus how often the
-# read-time celebrity pull fires.
+# Fan-out size/latency and celebrity pull/promotion/demotion counters (/metrics).
 FANOUT_TARGETS = Histogram(
     "hometimeline_fanout_targets",
     "Number of home timelines a single post was fanned out to",
@@ -92,18 +90,12 @@ def is_celebrity(author_id: str) -> bool:
 
 
 def mark_celebrity(author_id: str) -> None:
-    # sadd returns 1 only on the first add → count a promotion once.
     if get_redis().sadd(CELEBRITIES_KEY, author_id):
         CELEB_PROMOTIONS.inc()
 
 
 def demote_if_below(author_id: str) -> None:
-    """Drop an account back to push fan-out once it falls under the threshold.
-
-    Without this, a previously-celebrity account that loses followers would stay
-    in the pull set forever (read-time cost it no longer warrants, and its new
-    posts would never be pushed to its followers). Called on unfollow.
-    """
+    """Drop an account back to push fan-out once it falls under the threshold."""
     if get_redis().scard(followers_key(author_id)) < settings.CELEBRITY_FOLLOWER_THRESHOLD:
         if get_redis().srem(CELEBRITIES_KEY, author_id):
             CELEB_DEMOTIONS.inc()
@@ -200,16 +192,12 @@ def page(user_id: str, cursor: str | None, limit: int = 20) -> dict:
             if max_cursor is None or score < max_cursor:
                 candidates[post_id] = score
 
-    # 3. Merge by score (timestamp) desc, take the page. The cursor stays
-    #    chronological so keyset pagination remains stable across pages.
+    # 3. Merge by score desc, take the page.
     merged = sorted(candidates.items(), key=lambda kv: kv[1], reverse=True)[:limit]
     items = [post_id for post_id, _ in merged]
     next_cursor = merged[-1][1] if len(merged) == limit else None
 
-    # 4. Optional algorithmic re-rank *within* the page: ranking-svc reorders the
-    #    page's posts by recency⊕engagement⊕affinity. Pagination remains keyset by
-    #    timestamp (next_cursor unchanged); only intra-page order is affected. If
-    #    ranking is off/unreachable the chronological order stands.
+    # 4. Optional algorithmic re-rank within the page via ranking-svc.
     ranked = clients.rank(user_id, items)
     if ranked:
         in_page = set(items)

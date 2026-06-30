@@ -67,8 +67,7 @@ class Command(BaseCommand):
         store.remove_post(targets, data["post_id"])
 
     def _on_post_reposted(self, data: dict) -> None:
-        # Fan the original post out to the reposter's followers (and the reposter),
-        # timestamped at the repost so it lands as a fresh entry.
+        # Fan the original post out to the reposter's followers (and the reposter).
         reposter = data["user_id"]
         ts = _epoch(data.get("created_at"))
         targets = store.followers_of(reposter) + [reposter]

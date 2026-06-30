@@ -1,21 +1,8 @@
 """Transactional outbox for post-svc.
 
-The hazard the outbox removes: writing to MongoDB and publishing to the bus are
-two systems, so "write then publish" can lose an event if the process dies in
-between (post saved, fan-out never happens) — the dual-write problem the
-architecture docs flag as a known eventual-consistency pitfall.
-
-Instead, the domain write and the event are committed **in one MongoDB
-transaction** (the post and an ``outbox`` row land together or not at all). A
-separate relay (``manage.py outbox_relay``) then publishes pending rows to the
-bus and marks them sent. The relay re-publishes the persisted ``event_id``, so a
-crash mid-relay yields an at-least-once redelivery that downstream consumers
-dedupe — never a lost event.
-
-Requires MongoDB transactions → the compose ``mongo`` runs as a single-node
-replica set (``rs0``). If transactions are unavailable the helper degrades to a
-best-effort sequential write and logs a warning, so dev without a replica set
-still functions (without the atomicity guarantee).
+The domain write and its events are committed in one MongoDB transaction (rs0);
+a relay (``manage.py outbox_relay``) publishes pending rows to the bus and marks
+them sent, re-publishing the persisted ``event_id`` so redeliveries dedupe.
 """
 
 from __future__ import annotations
@@ -69,9 +56,7 @@ def write_atomically(
                     outbox_collection().insert_many(entries, session=session)
         return
     except OperationFailure as exc:
-        # Transactions unsupported (standalone mongo) → degrade. The domain write
-        # and the outbox insert are then two steps; the relay still guarantees the
-        # event is eventually published, only the cross-write atomicity is lost.
+        # Transactions unavailable (standalone mongo): fall back to sequential writes.
         if "Transaction numbers" in str(exc) or "replica set" in str(exc).lower():
             logger.warning("outbox: transactions unavailable, writing best-effort")
             domain_write(None)

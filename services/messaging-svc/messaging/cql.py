@@ -1,16 +1,9 @@
-"""Cassandra access for direct messages.
+"""Cassandra access for direct messages (query-first model).
 
-Why Cassandra here: direct messages are the canonical Cassandra workload —
-write-heavy, append-only, time-ordered, and naturally partitioned by
-conversation. The data model is **query-first** (one table per read pattern), the
-opposite of a normalised relational schema:
-
-- ``messages_by_conversation`` — partition = conversation, clustering by a
-  ``timeuuid`` DESC, so reading a conversation's latest messages (and paging
-  older ones) is a single sequential partition read.
-- ``conversations_by_user`` — partition = user, one row per conversation, so a
-  user's inbox is one partition read. Ordered client-side (a user has few
-  conversations) to avoid the delete+insert dance of mutating a clustering key.
+- ``messages_by_conversation`` — partition = conversation, clustering by
+  ``timeuuid`` DESC: a conversation's messages, newest first.
+- ``conversations_by_user`` — partition = user, one row per conversation: a
+  user's inbox, ordered client-side.
 
 The keyspace/tables are created idempotently at startup (``IF NOT EXISTS``).
 """

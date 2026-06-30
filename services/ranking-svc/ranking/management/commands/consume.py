@@ -4,7 +4,7 @@ from tinyinsta.events import Envelope, types
 
 from ranking import store
 
-# Engagement weights: a comment signals more intent than a like.
+# Engagement weights.
 LIKE_WEIGHT = 1.0
 COMMENT_WEIGHT = 2.0
 
@@ -49,7 +49,6 @@ class Command(BaseCommand):
     def _on_liked(self, data: dict) -> None:
         post_id = data["post_id"]
         store.add_engagement(post_id, LIKE_WEIGHT)
-        # A like is an affinity signal from the liker toward the post's author.
         store.bump_affinity(data["user_id"], store.author_of(post_id), LIKE_WEIGHT)
 
     def _on_unliked(self, data: dict) -> None:

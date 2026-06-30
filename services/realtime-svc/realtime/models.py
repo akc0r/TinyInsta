@@ -27,9 +27,7 @@ class Notification(models.Model):
 class UserHandle(models.Model):
     """username → user_id projection, built from user.created.
 
-    Lets realtime-svc resolve an @mention (which arrives as a raw username,
-    because post-svc does not own the mapping) to the user it should notify,
-    without a sync call to user-svc. Rebuildable by replaying user.created.
+    Used to resolve an @mention (a raw username) to the user to notify.
     """
 
     user_id = models.UUIDField(primary_key=True)

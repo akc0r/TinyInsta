@@ -1,14 +1,8 @@
 """Ranking signals + scoring, backed by Redis.
 
-ranking-svc is a derived read model: it consumes the post.* events and keeps,
-per post, an engagement signal and a little metadata, plus a per-(viewer, author)
-affinity counter. None of it is a system of record — replay the topics to rebuild.
-
-The score blends three forces, the canonical ingredients of an algorithmic feed:
-- **recency** — exponential decay with a configurable half-life;
-- **engagement** — log-damped likes + comments (so a viral post can't dominate);
-- **affinity** — how much this viewer has interacted with this author before.
-Reels get a small constant boost. All weights are env-tunable.
+Per-post engagement + metadata and per-(viewer, author) affinity, built from the
+post.* events. The score blends recency (exponential decay), log-damped
+engagement and affinity, plus a small boost for reels. Weights are env-tunable.
 """
 
 from __future__ import annotations
@@ -20,7 +14,7 @@ from functools import lru_cache
 
 from django.conf import settings
 
-# How long a signal lives without further activity (30 days) — keeps Redis bounded.
+# Signal TTL (30 days).
 SIGNAL_TTL = 30 * 24 * 3600
 
 
@@ -95,7 +89,7 @@ def score_many(viewer_id: str, post_ids: list[str]) -> dict[str, float]:
         pipe.get(_eng_key(pid))
     raw = pipe.execute()
 
-    # Affinity for the distinct authors in this batch, one round-trip.
+    # Affinity for the distinct authors in this batch.
     metas = {pid: raw[2 * i] for i, pid in enumerate(post_ids)}
     engs = {pid: raw[2 * i + 1] for i, pid in enumerate(post_ids)}
     authors = {m.get("author_id") for m in metas.values() if m}

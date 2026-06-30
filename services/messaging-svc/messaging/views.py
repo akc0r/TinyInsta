@@ -49,8 +49,7 @@ class Messages(APIView):
 
         msg = cql.send_message(user_id, recipient_id, body)
 
-        # Live delivery is handled by realtime-svc (the WebSocket hub) consuming
-        # message.sent — messaging-svc owns persistence, not the socket fan-out.
+        # Live delivery is handled by realtime-svc consuming message.sent.
         try:
             _producer.publish(
                 types.MESSAGE_SENT,

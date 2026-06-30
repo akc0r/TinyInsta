@@ -14,11 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 def rank(viewer_id: str, post_ids: list[str]) -> list[str] | None:
-    """Ask ranking-svc to order ``post_ids`` for ``viewer_id``, newest-relevant first.
+    """Ask ranking-svc to order ``post_ids`` for ``viewer_id``.
 
-    Returns the ranked id list, or ``None`` if ranking is disabled or unreachable
-    — the caller then keeps the chronological order, so the feed degrades cleanly
-    rather than failing when ranking-svc is down.
+    Returns the ranked id list, or ``None`` if ranking is disabled or unreachable.
     """
     if not getattr(settings, "RANKING_ENABLED", False) or not post_ids:
         return None
