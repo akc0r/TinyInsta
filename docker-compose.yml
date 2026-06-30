@@ -22,18 +22,15 @@ x-svc-env: &svc-env
   OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
   OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8080/realms/tinyinsta}"
   OIDC_AUDIENCE: "${OIDC_AUDIENCE:-}"
-  # gunicorn workers per HTTP service. 1 by default to keep the full stack within
-  # a laptop Docker VM; raise (e.g. 2) where resources allow.
+  # gunicorn workers per HTTP service.
   WEB_CONCURRENCY: "${WEB_CONCURRENCY:-1}"
 
 x-svc-build: &svc-build
   context: .
   # `dockerfile` is set per service below.
 
-# One-shot DB migration for relational services. Each <svc>-migrate runs
-# `manage.py migrate` once and exits; the service + its worker wait for it to
-# complete successfully (depends_on: condition: service_completed_successfully),
-# so the schema is always present before traffic — no manual migrate step.
+# One-shot DB migration: each <svc>-migrate runs `manage.py migrate` and exits;
+# the service and its worker wait for it to complete before starting.
 x-migrate: &migrate
   command: ["python", "manage.py", "migrate", "--noinput"]
   restart: "on-failure"
@@ -157,9 +154,7 @@ services:
   mongo:
     image: mongo:7
     profiles: ["mongo"]
-    # Single-node replica set: enables multi-document transactions (the
-    # transactional outbox in post-svc writes the post and its event atomically)
-    # and change streams. Initialised once by the mongo-init one-shot below.
+    # Single-node replica set; initialised once by the mongo-init one-shot below.
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     ports:
       - "27017:27017"
@@ -178,8 +173,7 @@ services:
       mongo:
         condition: service_healthy
     restart: "no"
-    # Idempotent: rs.initiate() throws "already initialized" on re-run, which we
-    # swallow so the one-shot can be re-applied without error.
+    # Initialise the replica set (idempotent: re-runs swallow "already initialized").
     entrypoint:
       - bash
       - -c
@@ -222,7 +216,7 @@ services:
     profiles: ["neo4j"]
     environment:
       NEO4J_AUTH: "${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-tinyinsta}"
-      # Bound the JVM heap + page cache so Neo4j fits a laptop Docker VM.
+      # JVM heap + page cache caps.
       NEO4J_server_memory_heap_initial__size: "256m"
       NEO4J_server_memory_heap_max__size: "512m"
       NEO4J_server_memory_pagecache_size: "256m"
@@ -240,14 +234,12 @@ services:
       discovery.type: single-node
       xpack.security.enabled: "false"
       ES_JAVA_OPTS: "-Xms512m -Xmx512m"
-    # 512m heap + Lucene/off-heap; capped so ES can't balloon and starve the VM.
     mem_limit: 1200m
     ports:
       - "9200:9200"
     volumes:
       - es-data:/usr/share/elasticsearch/data
-    # ES boots slower under the heap cap; gate search-svc/worker on it being up
-    # so the consumer doesn't crash-loop on "connection refused" at startup.
+    # Gate search-svc/worker on ES being up (see their depends_on).
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://localhost:9200/_cluster/health || exit 1"]
       interval: 10s
@@ -259,15 +251,10 @@ services:
     profiles: ["cassandra"]
     environment:
       CASSANDRA_CLUSTER_NAME: tinyinsta
-      # Single-node dev heap. The image otherwise auto-sizes off-heap *direct*
-      # memory to ~1.4G (from the VM's total RAM), which alone blows past any
-      # sane mem_limit and gets the container OOM-killed — so we pin both the
-      # heap and MaxDirectMemorySize. Total stays well under mem_limit below.
+      # Single-node dev heap; pin both heap and direct memory.
       MAX_HEAP_SIZE: "512M"
       HEAP_NEWSIZE: "100M"
       JVM_EXTRA_OPTS: "-XX:MaxDirectMemorySize=512M"
-    # Ceiling for heap (512M) + direct (512M) + JVM overhead (~250M). Fits a 6 GB
-    # Docker VM next to the other stores; raise it (and the two sizes) with more RAM.
     mem_limit: 1400m
     ports:
       - "9042:9042"
@@ -388,8 +375,7 @@ services:
       SERVICE_NAME: post-svc
       MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
     depends_on: [post-svc]
-  # Transactional-outbox relay: publishes events committed alongside the post
-  # write to the bus. Separate process so the API never publishes inline.
+  # Transactional-outbox relay: publishes pending outbox events to the bus.
   post-outbox-relay:
     image: tinyinsta/post-svc
     profiles: ["apps", "post-svc"]
@@ -428,7 +414,7 @@ services:
       <<: *svc-env
       SERVICE_NAME: hometimeline-svc
       USERTIMELINE_URL: "http://usertimeline-svc:8000"
-      # Algorithmic feed re-rank via ranking-svc (chronological if off/unreachable).
+      # Feed re-rank via ranking-svc (chronological if off/unreachable).
       RANKING_ENABLED: "${RANKING_ENABLED:-true}"
       RANKING_URL: "http://ranking-svc:8000"
     labels:
@@ -445,8 +431,7 @@ services:
       USERTIMELINE_URL: "http://usertimeline-svc:8000"
     depends_on: [hometimeline-svc]
 
-  # Algorithmic ranking read model. Internal only (no Traefik route): scored
-  # server-to-server by hometimeline-svc at feed-read time.
+  # Algorithmic ranking read model. Internal only (no Traefik route).
   ranking-svc:
     build: { <<: *svc-build, dockerfile: services/ranking-svc/Dockerfile }
     image: tinyinsta/ranking-svc
@@ -463,7 +448,7 @@ services:
       SERVICE_NAME: ranking-svc
     depends_on: [ranking-svc]
 
-  # Direct messages, backed by Cassandra (write-heavy, time-ordered).
+  # Direct messages, backed by Cassandra.
   messaging-svc:
     build: { <<: *svc-build, dockerfile: services/messaging-svc/Dockerfile }
     image: tinyinsta/messaging-svc
