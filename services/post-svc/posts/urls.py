@@ -7,6 +7,7 @@ urlpatterns = [
     # `<post_id>` pattern below (Django matches in order).
     path("posts", views.PostList.as_view()),
     path("posts/reels", views.ReelsFeed.as_view()),
+    path("posts/tagged", views.Tagged.as_view()),
     path("posts/saves", views.Saves.as_view()),
     path("posts/reposts", views.Reposts.as_view()),
     path("posts/reposts/<str:repost_id>", views.Reposts.as_view()),

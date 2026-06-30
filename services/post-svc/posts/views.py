@@ -26,7 +26,6 @@ def _extract_hashtags(text: str) -> list[str]:
 
 
 def _extract_mentions(text: str) -> list[str]:
-    # Usernames only; post-svc does not resolve them to ids (golden rule).
     return sorted({name.lower() for name in _MENTION_RE.findall(text or "")})
 
 
@@ -81,9 +80,6 @@ class PostList(APIView):
     def post(self, request):
         caption = request.data.get("caption", "")
         media_ids = request.data.get("media_ids", [])
-        # A reel is a post whose media is short-form video; same storage and
-        # fan-out, distinguished by `kind` so the frontend can route it to the
-        # reels surface and ranking-svc can weight it differently.
         kind = "reel" if request.data.get("kind") == "reel" else "post"
         post_id = str(uuid.uuid4())
         author_id = str(request.user.user_id)
@@ -119,8 +115,6 @@ class PostList(APIView):
             caption, actor_id=author_id, source_type="post", source_id=post_id, post_id=post_id
         )
 
-        # Post + its events commit together (transactional outbox); the relay
-        # publishes them — the write is never visible without its fan-out event.
         outbox.write_atomically(
             lambda session: posts_collection().insert_one(doc, session=session), events
         )
@@ -130,8 +124,7 @@ class PostList(APIView):
 class ReelsFeed(APIView):
     """Recent reels, newest first, keyset-paginated by created_at.
 
-    A lightweight read over post-svc; the ranked reels surface is produced by
-    ranking-svc. `cursor` is the created_at of the last item from the prior page.
+    `cursor` is the created_at of the last item from the prior page.
     """
 
     def get(self, request):
@@ -141,6 +134,35 @@ class ReelsFeed(APIView):
         except ValueError:
             limit = 20
         query: dict = {"kind": "reel"}
+        if cursor:
+            query["created_at"] = {"$lt": cursor}
+        docs = list(
+            posts_collection().find(query).sort("created_at", -1).limit(limit)
+        )
+        items = [_serialize(d) for d in docs]
+        next_cursor = docs[-1]["created_at"] if len(docs) == limit else None
+        return Response({"items": items, "next_cursor": next_cursor})
+
+
+class Tagged(APIView):
+    """Posts that tag (mention) a username, newest first, keyset-paginated.
+
+    `cursor` is the created_at of the last item from the prior page.
+    """
+
+    def get(self, request):
+        username = (request.query_params.get("username") or "").lower()
+        if not username:
+            return Response(
+                {"detail": "username query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        cursor = request.query_params.get("cursor")
+        try:
+            limit = min(int(request.query_params.get("limit", 20)), 50)
+        except ValueError:
+            limit = 20
+        query: dict = {"mentions": username}
         if cursor:
             query["created_at"] = {"$lt": cursor}
         docs = list(
@@ -197,8 +219,6 @@ class Comments(APIView):
         body = (request.data.get("body") or "").strip()
         if not body:
             return Response({"detail": "body is required."}, status=status.HTTP_400_BAD_REQUEST)
-        # Nested replies: an optional parent comment id. Stored flat with a
-        # parent pointer; the client builds the tree.
         parent_id = request.data.get("parent_id")
 
         author_id = str(request.user.user_id)
