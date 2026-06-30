@@ -1,4 +1,11 @@
 # TinyInsta — shortcuts. Datastores come online via profiles (see docs/ROADMAP.md).
+#
+# The Compose project is split for maintainability and merged via `include`:
+#   docker-compose.database.yml → infra, datastores & observability
+#   docker-compose.service.yml  → application services
+#   docker-compose.yml          → root; includes both (the default file)
+# `docker compose` loads the root file automatically, so the targets below are
+# unchanged. Edit a half directly when touching only datastores or only services.
 COMPOSE := docker compose
 
 .DEFAULT_GOAL := help

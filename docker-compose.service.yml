@@ -1,0 +1,340 @@
+# TinyInsta — application services.
+# Profiles: apps (all) + one profile per service (e.g. user-svc, post-svc, …)
+#
+# Included by the root docker-compose.yml. Holds only the Django/DRF
+# microservices and their workers. Infra & datastores they depend on
+# (postgres, elasticsearch, …) live in docker-compose.database.yml — the two
+# files merge into a single project, so cross-file depends_on resolves.
+#
+# Application images build with context = repo root (to bundle libs/).
+
+# ---- Reusable YAML anchors -----------------------------------------------------
+# NOTE: YAML anchors are file-scoped — they do not cross `include` boundaries,
+# so these live here (not in the database file) for the services to reuse.
+x-svc-env: &svc-env
+  DJANGO_DEBUG: "${DJANGO_DEBUG:-true}"
+  DJANGO_SECRET_KEY: "${DJANGO_SECRET_KEY:-dev-insecure-change-me}"
+  POSTGRES_USER: "${POSTGRES_USER:-tinyinsta}"
+  POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-tinyinsta}"
+  POSTGRES_HOST: postgres
+  BUS_BOOTSTRAP_SERVERS: redpanda:9092
+  # Durable, cross-replica consumer dedupe (RedisDedupeStore).
+  DEDUPE_REDIS_URL: "${DEDUPE_REDIS_URL:-redis://redis:6379/0}"
+  # Bounded retry + dead-letter routing for event consumers.
+  BUS_MAX_ATTEMPTS: "${BUS_MAX_ATTEMPTS:-3}"
+  BUS_RETRY_BACKOFF: "${BUS_RETRY_BACKOFF:-0.5}"
+  OIDC_JWKS_URL: "http://keycloak:8080/realms/tinyinsta/protocol/openid-connect/certs"
+  OIDC_ISSUER: "${OIDC_ISSUER:-http://localhost:8080/realms/tinyinsta}"
+  OIDC_AUDIENCE: "${OIDC_AUDIENCE:-}"
+  # gunicorn workers per HTTP service.
+  WEB_CONCURRENCY: "${WEB_CONCURRENCY:-1}"
+
+x-svc-build: &svc-build
+  context: .
+  # `dockerfile` is set per service below.
+
+# One-shot DB migration: each <svc>-migrate runs `manage.py migrate` and exits;
+# the service and its worker wait for it to complete before starting.
+x-migrate: &migrate
+  command: ["python", "manage.py", "migrate", "--noinput"]
+  restart: "on-failure"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+  # ===========================================================================
+  # APPLICATION SERVICES (profile: apps, + one profile per service)
+  # ===========================================================================
+  user-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/user-svc
+    profiles: ["apps", "user-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: user-svc
+  user-svc:
+    build: { <<: *svc-build, dockerfile: services/user-svc/Dockerfile }
+    image: tinyinsta/user-svc
+    profiles: ["apps", "user-svc"]
+    depends_on:
+      user-svc-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: user-svc
+      NEO4J_URI: "bolt://neo4j:7687"
+      NEO4J_USER: "${NEO4J_USER:-neo4j}"
+      NEO4J_PASSWORD: "${NEO4J_PASSWORD:-tinyinsta}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.users.rule=PathPrefix(`/api/users`)"
+      - "traefik.http.routers.users.middlewares=apistrip@file,ratelimit@file"
+
+  post-svc:
+    build: { <<: *svc-build, dockerfile: services/post-svc/Dockerfile }
+    image: tinyinsta/post-svc
+    profiles: ["apps", "post-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: post-svc
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.posts.rule=PathPrefix(`/api/posts`)"
+      - "traefik.http.routers.posts.middlewares=apistrip@file,ratelimit@file"
+  post-worker:
+    image: tinyinsta/post-svc
+    profiles: ["apps", "post-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: post-svc
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
+    depends_on: [post-svc]
+  # Transactional-outbox relay: publishes pending outbox events to the bus.
+  post-outbox-relay:
+    image: tinyinsta/post-svc
+    profiles: ["apps", "post-svc"]
+    command: python manage.py outbox_relay
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: post-svc
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
+    depends_on: [post-svc]
+
+  usertimeline-svc:
+    build: { <<: *svc-build, dockerfile: services/usertimeline-svc/Dockerfile }
+    image: tinyinsta/usertimeline-svc
+    profiles: ["apps", "usertimeline-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: usertimeline-svc
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.usertimeline.rule=PathPrefix(`/api/usertimeline`)"
+      - "traefik.http.routers.usertimeline.middlewares=apistrip@file,ratelimit@file"
+  usertimeline-worker:
+    image: tinyinsta/usertimeline-svc
+    profiles: ["apps", "usertimeline-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: usertimeline-svc
+    depends_on: [usertimeline-svc]
+
+  hometimeline-svc:
+    build: { <<: *svc-build, dockerfile: services/hometimeline-svc/Dockerfile }
+    image: tinyinsta/hometimeline-svc
+    profiles: ["apps", "hometimeline-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: hometimeline-svc
+      USERTIMELINE_URL: "http://usertimeline-svc:8000"
+      # Feed re-rank via ranking-svc (chronological if off/unreachable).
+      RANKING_ENABLED: "${RANKING_ENABLED:-true}"
+      RANKING_URL: "http://ranking-svc:8000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.home.rule=PathPrefix(`/api/home`)"
+      - "traefik.http.routers.home.middlewares=apistrip@file,ratelimit@file"
+  hometimeline-worker:
+    image: tinyinsta/hometimeline-svc
+    profiles: ["apps", "hometimeline-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: hometimeline-svc
+      USERTIMELINE_URL: "http://usertimeline-svc:8000"
+    depends_on: [hometimeline-svc]
+
+  # Algorithmic ranking read model. Internal only (no Traefik route).
+  ranking-svc:
+    build: { <<: *svc-build, dockerfile: services/ranking-svc/Dockerfile }
+    image: tinyinsta/ranking-svc
+    profiles: ["apps", "ranking-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: ranking-svc
+  ranking-worker:
+    image: tinyinsta/ranking-svc
+    profiles: ["apps", "ranking-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: ranking-svc
+    depends_on: [ranking-svc]
+
+  # Direct messages, backed by Cassandra.
+  messaging-svc:
+    build: { <<: *svc-build, dockerfile: services/messaging-svc/Dockerfile }
+    image: tinyinsta/messaging-svc
+    profiles: ["apps", "messaging-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: messaging-svc
+      CASSANDRA_HOSTS: cassandra
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.messaging.rule=PathPrefix(`/api/messaging`)"
+      - "traefik.http.routers.messaging.middlewares=apistrip@file,ratelimit@file"
+  # One-shot: create the Cassandra keyspace/tables before the API serves traffic.
+  messaging-init:
+    image: tinyinsta/messaging-svc
+    profiles: ["apps", "messaging-svc"]
+    command: python manage.py init_cassandra
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: messaging-svc
+      CASSANDRA_HOSTS: cassandra
+    restart: "on-failure"
+    depends_on: [messaging-svc]
+
+  interaction-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/interaction-svc
+    profiles: ["apps", "interaction-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: interaction-svc
+  interaction-svc:
+    build: { <<: *svc-build, dockerfile: services/interaction-svc/Dockerfile }
+    image: tinyinsta/interaction-svc
+    profiles: ["apps", "interaction-svc"]
+    depends_on:
+      interaction-svc-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: interaction-svc
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.interactions.rule=PathPrefix(`/api/interactions`)"
+      - "traefik.http.routers.interactions.middlewares=apistrip@file,ratelimit@file"
+
+  stories-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/stories-svc
+    profiles: ["apps", "stories-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: stories-svc
+  stories-svc:
+    build: { <<: *svc-build, dockerfile: services/stories-svc/Dockerfile }
+    image: tinyinsta/stories-svc
+    profiles: ["apps", "stories-svc"]
+    depends_on:
+      stories-svc-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: stories-svc
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.stories.rule=PathPrefix(`/api/stories`)"
+      - "traefik.http.routers.stories.middlewares=apistrip@file,ratelimit@file"
+  stories-worker:
+    image: tinyinsta/stories-svc
+    profiles: ["apps", "stories-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: stories-svc
+    depends_on: [stories-svc]
+
+  media-svc:
+    build: { <<: *svc-build, dockerfile: services/media-svc/Dockerfile }
+    image: tinyinsta/media-svc
+    profiles: ["apps", "media-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: media-svc
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
+      MONGO_DB: media_svc
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+      S3_BUCKET: "${S3_BUCKET:-media}"
+      S3_PUBLIC_URL: "${S3_PUBLIC_URL:-http://localhost:9000}"
+      S3_CDN_URL: "${S3_CDN_URL:-http://localhost/cdn}"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.media.rule=PathPrefix(`/api/media`)"
+      - "traefik.http.routers.media.middlewares=apistrip@file,ratelimit@file"
+
+  media-worker:
+    build: { <<: *svc-build, dockerfile: services/media-worker/Dockerfile }
+    image: tinyinsta/media-worker
+    profiles: ["apps", "media-worker"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: media-worker
+      MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
+      MONGO_DB: media_svc
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-minioadmin}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-minioadmin}"
+      S3_BUCKET: "${S3_BUCKET:-media}"
+      S3_PUBLIC_URL: "${S3_PUBLIC_URL:-http://localhost:9000}"
+      S3_CDN_URL: "${S3_CDN_URL:-http://localhost/cdn}"
+
+  search-svc:
+    build: { <<: *svc-build, dockerfile: services/search-svc/Dockerfile }
+    image: tinyinsta/search-svc
+    profiles: ["apps", "search-svc"]
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: search-svc
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.search.rule=PathPrefix(`/api/search`) || PathPrefix(`/api/explore`) || PathPrefix(`/api/hashtags`)"
+      - "traefik.http.routers.search.middlewares=apistrip@file,ratelimit@file"
+  search-worker:
+    image: tinyinsta/search-svc
+    profiles: ["apps", "search-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: search-svc
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
+    depends_on: [search-svc]
+
+  realtime-svc-migrate:
+    <<: *migrate
+    image: tinyinsta/realtime-svc
+    profiles: ["apps", "realtime-svc"]
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: realtime-svc
+  realtime-svc:
+    build: { <<: *svc-build, dockerfile: services/realtime-svc/Dockerfile }
+    image: tinyinsta/realtime-svc
+    profiles: ["apps", "realtime-svc"]
+    depends_on:
+      realtime-svc-migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: realtime-svc
+    labels:
+      - "traefik.enable=true"
+      # Notifications REST (/api prefix stripped)
+      - "traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`)"
+      - "traefik.http.routers.notifications.middlewares=apistrip@file,ratelimit@file"
+      - "traefik.http.routers.notifications.service=realtime-svc"
+      # WebSocket (no strip)
+      - "traefik.http.routers.ws.rule=PathPrefix(`/ws`)"
+      - "traefik.http.routers.ws.service=realtime-svc"
+      - "traefik.http.services.realtime-svc.loadbalancer.server.port=8000"
+  realtime-worker:
+    image: tinyinsta/realtime-svc
+    profiles: ["apps", "realtime-svc"]
+    command: python manage.py consume
+    environment:
+      <<: *svc-env
+      SERVICE_NAME: realtime-svc
+    depends_on: [realtime-svc]

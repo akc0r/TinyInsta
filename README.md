@@ -122,8 +122,16 @@ tinyinsta/
 │   └── realtime-svc/         # WebSocket + notifications
 ├── libs/                     # shared: auth_jwt, bus client, event schemas, Django base
 ├── infra/                    # postgres init, traefik, keycloak realm, redpanda
-└── docs/                     # 📚 this documentation
+├── docs/                     # 📚 this documentation
+├── docker-compose.database.yml  # infra, datastores & observability
+├── docker-compose.service.yml   # application services
+└── docker-compose.yml           # root: includes both (the file Compose loads)
 ```
+
+> 🧩 The Compose definition is split into two maintainable halves — datastores
+> vs. application services — merged by the root file's `include`. Profiles and
+> cross-file `depends_on` work across both, so all `make` targets are unchanged.
+> Edit a half directly when touching only datastores or only services.
 
 ## 🚀 Quick start
 
