@@ -39,9 +39,7 @@ type IncomingMessage = {
   created_at: string
 }
 
-// Subscribe to live incoming direct messages. The handler is kept in a ref so
-// the subscription is set up once; callers get every message.sent pushed to
-// their user group by realtime-svc.
+// Subscribe to live incoming direct messages (message.sent).
 export function useIncomingMessages(onMessage: (m: IncomingMessage) => void) {
   const { getToken } = useAuth()
   const ref = useRef(onMessage)

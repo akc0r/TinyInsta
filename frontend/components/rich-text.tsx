@@ -2,17 +2,14 @@ import Link from "next/link"
 import { Fragment } from "react"
 
 // Render text with clickable #hashtags and @mentions.
-//   #tag      → /hashtags/{tag}   (search-svc hashtag page)
-//   @username → /search?q=username (mentions aren't resolvable to an id here)
-// Everything else is rendered verbatim, newlines preserved by the caller's CSS.
-
+//   #tag      → /hashtags/{tag}
+//   @username → /search?q=username
 export function RichText({ text }: { text: string }) {
   if (!text) return null
   const nodes: React.ReactNode[] = []
   let last = 0
   let key = 0
 
-  // matchAll over a fresh global regex — no shared lastIndex to mutate.
   for (const m of text.matchAll(/([#@])(\w+)/g)) {
     const index = m.index ?? 0
     if (index > last) {
